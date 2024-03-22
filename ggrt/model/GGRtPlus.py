@@ -9,9 +9,9 @@ from ggrt.loss.photometric_loss import MultiViewPhotometricDecayLoss
 
 from ggrt.base.model_base import Model
 
-from ggrt.model.pixelsplat.decoder import get_decoder
-from ggrt.model.pixelsplat.encoder import get_encoder
-from ggrt.model.pixelsplat.pixelsplat import PixelSplat
+from ggrt.model.mvsplat.decoder import get_decoder
+from ggrt.model.mvsplat.encoder import get_encoder
+from ggrt.model.mvsplat.mvsplat import MvSplat
 
 class DGaussianModel(Model):
     def __init__(self, args, load_opt=True, load_scheduler=True, pretrained=True):
@@ -21,11 +21,10 @@ class DGaussianModel(Model):
         self.pose_learner = DepthPoseNet(iters=12, pretrained=pretrained).to(device)
         
         # create generalized 3d gaussian.
-        encoder, encoder_visualizer = get_encoder(args.pixelsplat.encoder)
-        decoder = get_decoder(args.pixelsplat.decoder)
-        self.gaussian_model = PixelSplat(encoder, decoder, encoder_visualizer)
+        encoder, encoder_visualizer = get_encoder(args.mvsplat.encoder)
+        decoder = get_decoder(args.mvsplat.decoder)
+        self.gaussian_model = MvSplat(encoder, decoder, encoder_visualizer)
         self.gaussian_model.to(device)
-        # self.gaussian_model.load_state_dict(torch.load('model_zoo/re10k.ckpt')['state_dict'])
         
         self.photometric_loss = MultiViewPhotometricDecayLoss()
 

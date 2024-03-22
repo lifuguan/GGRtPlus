@@ -5,3 +5,4 @@ data
 model_zoo
 outputs
 pretrain_ibrent
+wandb

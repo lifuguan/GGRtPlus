@@ -10,7 +10,7 @@ import torch.utils.data.distributed
 from ggrt.geometry.depth import inv2depth
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
 from ggrt.model.dbarf import DBARFModel
-from ggrt.model.dgaussian import DGaussianModel
+from ggrt.model.GGRtPlus import DGaussianModel
 from ggrt.projection import Projector
 from ggrt.pose_util import Pose, rotation_distance
 from ggrt.render_ray import render_rays

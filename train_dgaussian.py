@@ -10,7 +10,7 @@ import torch.utils.data.distributed
 from ggrt.geometry.depth import inv2depth
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
 from ggrt.model.dbarf import DBARFModel
-from ggrt.model.dgaussian import DGaussianModel
+from ggrt.model.GGRtPlus import DGaussianModel
 from ggrt.projection import Projector
 from ggrt.pose_util import Pose, rotation_distance
 from ggrt.render_ray import render_rays
@@ -22,7 +22,7 @@ from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_s
 from train_ibrnet import synchronize
 from ggrt.base.trainer import BaseTrainer
 
-from ggrt.config as config
+import ggrt.config as config
 from ggrt.loss.criterion import MaskedL2ImageLoss, self_sup_depth_loss
 
 # torch.autograd.set_detect_anomaly(True)

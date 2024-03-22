@@ -15,7 +15,7 @@ from ggrt.sample_ray import RaySamplerSingleImage
 from ggrt.loss.criterion import MaskedL2ImageLoss
 from ggrt.projection import Projector
 from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr
-from ggrt.config as config
+import ggrt.config as config
 
 
 def synchronize():

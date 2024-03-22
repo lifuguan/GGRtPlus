@@ -84,11 +84,9 @@ class WaymoStaticDataset(Dataset):
         self.train_view_graphs = []
 
         if mode == 'train':
-            # self.image_size = (528, 720)
-            self.image_size = (352, 480)
+            self.image_size = (224, 320)
+            # self.image_size = (176, 240)
         else:
-            # self.image_size = (228, 320)
-            # self.image_size = (352, 480)
             self.image_size = (640,960)        
         all_scenes = os.listdir(self.folder_path)
     
@@ -360,7 +358,7 @@ class WaymoStaticDataset(Dataset):
                 'src_cameras': torch.from_numpy( src_cameras),
                 'depth_range': depth_range,
                 'idx': idx,
-                'scaled_shape': (0, 0), # (378, 504)
+                'scaled_shape': (378, 504), # (0, 0)
                 "context": {
                         "extrinsics": pix_src_extrinsics,
                         "intrinsics": pix_src_intrinsics,
