@@ -304,7 +304,7 @@ def train(cfg_dict: DictConfig):
 
     if args.local_rank == 0 and args.expname != 'debug':
         wandb.init(
-            entity="lifuguan",
+            entity="gyy456",
             project="mvsplat",
             name=args.expname,
         )

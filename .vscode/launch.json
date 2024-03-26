@@ -6,7 +6,7 @@
     "configurations": [
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "7",
+                "CUDA_VISIBLE_DEVICES": "0",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "finetune:mvsplat-019",
@@ -24,7 +24,7 @@
                 "++eval_scenes=[019]",
                 "++num_source_views=4",
                 "++render_video=False",
-                "++expname=pf_mvsplat_ft_019"
+                "++expname=pf_mvsplat_ft_019_concat"
             ]
         },
         {
@@ -109,13 +109,13 @@
                 // "+ckpt_path=../pixelsplat/outputs/llff_generalized/checkpoints/llff_generalized_room29.ckpt",  // deferred 泛化权重
                 // "+ckpt_path=data/ibrnet/train/out/ft_dgaussian_019/model/model_002800.pth",
                 // "+ckpt_path=data/ibrnet/train/out/ft_dgaussian_003/model/model_001500.pth",
-                "+ckpt_path=data/ibrnet/train/out/ft_dgaussian_126/model/model_001500.pth",
+                "+ckpt_path=data/ibrnet/train/out/pf_mvsplat_ft_019/model/model_003000.pth",
                 // "+ckpt_path=data/ibrnet/train/out/waymo_generalized/generalized_waymo_best.pth", 
                 "++eval_dataset=waymo",
-                "++eval_scenes=[126]",    
+                "++eval_scenes=[019]",    
                 "++num_source_views=4",
-                "++render_video=True",
-                "++expname=ft_dgaussian_126",
+                "++render_video=False",
+                "++expname=ft_dgaussian_019",
             ]
         },
         {
@@ -306,11 +306,11 @@
             "args": [
                 "++rootdir=data/ibrnet/eval",
                 // "+ckpt_path=data/ibrnet/train/out/ft_waymo_003/generalized_waymo_best.pth", 
-                "+ckpt_path=data/ibrnet/train/out/waymo_generalized/generalized_waymo_best.pth", 
+                "+ckpt_path=model_zoo/pf_mvsplat.pth", 
                 "++train_dataset=waymo",
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
-                "++eval_scenes=['081']",
+                "++eval_scenes=['019']",
                 "++num_source_views=5",
                 "++render_video=False",
                 "++expname=test"

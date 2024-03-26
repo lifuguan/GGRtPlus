@@ -108,13 +108,13 @@ def render_cuda(
             sh_degree=degree,
             campos=extrinsics[i, :3, 3],
             prefiltered=False,  # This matches the original usage.
-            # debug=False,
+            debug=False,
         )
         rasterizer = GaussianRasterizer(settings)
 
         row, col = torch.triu_indices(3, 3)
 
-        image, radii, _ = rasterizer(
+        image, radii = rasterizer(
             means3D=gaussian_means[i],
             means2D=mean_gradients,
             shs=shs[i] if use_sh else None,

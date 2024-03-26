@@ -59,6 +59,15 @@ class EncoderCostVolumeCfg:
     wo_cost_volume_refine: bool
     use_epipolar_trans: bool
 
+def get_parameter_number(model):
+    total_num = sum(p.numel() for p in model.parameters())
+    trainable_num = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    for name,p in zip(model.named_modules(),model.backbone.parameters()):
+        print(name[0],p.numel())
+
+
+    return {'Total': total_num, 'Trainable': trainable_num}
+
 
 class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
     backbone: BackboneMultiview
@@ -114,7 +123,7 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
             costvolume_unet_attn_res=tuple(cfg.costvolume_unet_attn_res),
             gaussian_raw_channels=cfg.num_surfaces * (self.gaussian_adapter.d_in + 2),
             gaussians_per_pixel=cfg.gaussians_per_pixel,
-            num_views=get_cfg().num_source_views,
+            num_views=2,
             depth_unet_feat_dim=cfg.depth_unet_feat_dim,
             depth_unet_attn_res=cfg.depth_unet_attn_res,
             depth_unet_channel_mult=cfg.depth_unet_channel_mult,

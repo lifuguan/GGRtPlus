@@ -21,7 +21,7 @@ dataset_weights : [1]
 eval_dataset : waymo
 eval_scenes : ['019']
 
-num_source_views : 4
+num_source_views : 2
 workers : 16
 
 selection_rule : pose

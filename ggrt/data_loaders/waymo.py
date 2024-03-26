@@ -60,9 +60,9 @@ class WaymoStaticDataset(Dataset):
     )
     def __init__(self, args, mode, scenes=(), random_crop=True, **kwargs):
         if mode == 'test' or len(scenes) > 0:
-            self.folder_path = os.path.join('data/waymo/testing')
+            self.folder_path = os.path.join('data/waymo')
         else:
-            self.folder_path = os.path.join('data/waymo/training')
+            self.folder_path = os.path.join('data/waymo')
         self.dataset_name = 'waymo'
         self.pose_noise_level = 0
 
