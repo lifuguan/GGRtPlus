@@ -47,7 +47,7 @@
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
-                "++num_source_views=2",
+                "++num_source_views=4",
                 "++render_video=False",
                 "++use_pred_pose=False",
                 "++expname=test"
