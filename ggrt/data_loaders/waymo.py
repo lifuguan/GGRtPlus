@@ -87,7 +87,8 @@ class WaymoStaticDataset(Dataset):
             self.image_size = (224, 320)
             # self.image_size = (176, 240)
         else:
-            self.image_size = (640,960)        
+            # self.image_size = (640,960)        
+            self.image_size = (504,760)        
         all_scenes = os.listdir(self.folder_path)
     
         ############     Wamyo Parameters     ############
@@ -123,7 +124,7 @@ class WaymoStaticDataset(Dataset):
             near_depth = 0.1
             far_depth = 100
             
-            i_test = i_test[::200] if mode != 'eval_pose' else []
+            i_test = i_test[::args.llffhold] if mode != 'eval_pose' else []
             i_train = np.array([j for j in np.arange(len(rgb_files)) if
                                 (j not in i_test and j not in i_test)])
             
@@ -137,7 +138,7 @@ class WaymoStaticDataset(Dataset):
             if self.mode == 'train' or self.mode == 'eval_pose':
                 i_render = i_train
             else:
-                i_render = i_train
+                i_render = i_test
 
             self.train_intrinsics.append(intrinsics[i_train])
             self.train_poses.append(c2w_mats[i_train])

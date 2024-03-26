@@ -10,19 +10,17 @@ import lpips
 
 from torch.utils.data import DataLoader
 
+from ggrt.global_cfg import set_cfg
 from ggrt.base.checkpoint_manager import CheckPointManager
-from ggrt.config import config_parser
-from ggrt.sample_ray import RaySamplerSingleImage
-from ggrt.render_image import render_single_image
 from ggrt.model.dbarf import DBARFModel
 from utils_loc import *
 from ggrt.projection import Projector
 from ggrt.data_loaders import dataset_dict
 from ggrt.loss.ssim_torch import ssim as ssim_torch
 from ggrt.geometry.depth import inv2depth
-from ggrt.model.pixelsplat.decoder import get_decoder
-from ggrt.model.pixelsplat.encoder import get_encoder
-from ggrt.model.pixelsplat.pixelsplat import PixelSplat
+from ggrt.model.mvsplat.decoder import get_decoder
+from ggrt.model.mvsplat.encoder import get_encoder
+from ggrt.model.mvsplat.mvsplat import MvSplat
 
 from ggrt.pose_util import Pose
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
@@ -156,12 +154,13 @@ def depth_map(result):
 @hydra.main(
     version_base=None,
     config_path="../configs",
-    config_name="finetune_dgaussian_stable",
+    config_name="finetune_mvsplat_stable",
 )
 def eval(cfg_dict: DictConfig):
     args = cfg_dict
+    set_cfg(cfg_dict)
     args.distributed = False
-    # args.pixelsplat['encoder']['epipolar_transformer']['num_context_views'] = args.num_source_views
+    # args.mvsplat['encoder']['epipolar_transformer']['num_context_views'] = args.num_source_views
     
     
     # Create IBRNet model
@@ -171,9 +170,9 @@ def eval(cfg_dict: DictConfig):
     start_step = ckpt_manager.load(config=args, models=state_dicts)
     print(f'start_step: {start_step}')
     
-    encoder, encoder_visualizer = get_encoder(args.pixelsplat.encoder)
-    decoder = get_decoder(args.pixelsplat.decoder)
-    gaussian_model = PixelSplat(encoder, decoder, encoder_visualizer)
+    encoder, encoder_visualizer = get_encoder(args.mvsplat.encoder)
+    decoder = get_decoder(args.mvsplat.decoder)
+    gaussian_model = MvSplat(encoder, decoder, encoder_visualizer)
     gaussian_model.load_state_dict(torch.load(args.ckpt_path)['gaussian'])
     # gaussian_model.load_state_dict(torch.load(args.ckpt_path)['state_dict'])
     gaussian_model.cuda()
@@ -213,6 +212,8 @@ def eval(cfg_dict: DictConfig):
     video_rgb_pred = []
     video_depth_pred = []
     visdom_ins = visdom.Visdom(server='localhost', port=8097, env='splatam')
+    device = "cuda:0"
+    projector = Projector(device=device)
     for i, data in enumerate(test_loader):
         rgb_path = data['rgb_path'][0]
         file_id = os.path.basename(rgb_path).split('.')[0]
@@ -243,6 +244,12 @@ def eval(cfg_dict: DictConfig):
             R_errors.append(pose_error[0])
             t_errors.append(pose_error[1])
 
+            if args.use_pred_pose is True:
+                num_views = data['src_cameras'].shape[1]
+                target_pose = data['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(device)
+                context_poses = projector.get_train_poses(target_pose, pred_rel_poses.to(device))
+                data['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
+            
             batch = data_shim(data, device="cuda:0")
             batch = gaussian_model.data_shim(batch)       
             output, gt_rgb = gaussian_model(batch, i)
