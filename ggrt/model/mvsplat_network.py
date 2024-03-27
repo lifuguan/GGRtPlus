@@ -1,29 +1,21 @@
-import os
 import math
-
 import torch
-
-from ggrt.model.feature_network import ResUNet
-from ggrt.depth_pose_network import DepthPoseNet
 from ggrt.loss.photometric_loss import MultiViewPhotometricDecayLoss
-
 from ggrt.base.model_base import Model
+from ggrt.model.mvsplat.decoder import get_decoder
+from ggrt.model.mvsplat.encoder import get_encoder
+from ggrt.model.mvsplat.mvsplat import MvSplat
 
-from ggrt.model.pixelsplat.decoder import get_decoder
-from ggrt.model.pixelsplat.encoder import get_encoder
-from ggrt.model.pixelsplat.pixelsplat import PixelSplat
-
-class GaussianModel(Model):
+class MvsplatModel(Model):
     def __init__(self, args, load_opt=True, load_scheduler=True, pretrained=True):
         device = torch.device(f'cuda:{args.local_rank}')
         
         
         # create generalized 3d gaussian.
-        encoder, encoder_visualizer = get_encoder(args.pixelsplat.encoder)
-        decoder = get_decoder(args.pixelsplat.decoder)
-        self.gaussian_model = PixelSplat(encoder, decoder, encoder_visualizer)
+        encoder, encoder_visualizer = get_encoder(args.mvsplat.encoder)
+        decoder = get_decoder(args.mvsplat.decoder)
+        self.gaussian_model = MvSplat(encoder, decoder, encoder_visualizer)
         self.gaussian_model.to(device)
-        # self.gaussian_model.load_state_dict(torch.load('model_zoo/re10k.ckpt')['state_dict'])
         
         self.photometric_loss = MultiViewPhotometricDecayLoss()
 

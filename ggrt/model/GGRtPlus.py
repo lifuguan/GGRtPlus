@@ -13,7 +13,7 @@ from ggrt.model.mvsplat.decoder import get_decoder
 from ggrt.model.mvsplat.encoder import get_encoder
 from ggrt.model.mvsplat.mvsplat import MvSplat
 
-class DGaussianModel(Model):
+class GGRtPlusModel(Model):
     def __init__(self, args, load_opt=True, load_scheduler=True, pretrained=True):
         device = torch.device(f'cuda:{args.local_rank}')
         

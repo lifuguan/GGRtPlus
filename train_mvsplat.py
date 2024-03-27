@@ -7,10 +7,8 @@ from omegaconf import DictConfig
 import torch
 import torch.utils.data.distributed
 
-
-from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
-from ggrt.model.gaussian import GaussianModel
-from ggrt.pose_util import Pose, rotation_distance
+from ggrt.global_cfg import set_cfg
+from ggrt.model.mvsplat_network import MvsplatModel
 from ggrt.visualization.feature_visualizer import *
 from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_shim
 from train_ibrnet import synchronize
@@ -23,40 +21,20 @@ import copy
 from torchvision.utils import save_image
 from einops import rearrange
 
-def random_crop(data,size=[160,224] ,center=None):
-    _,_,_,h, w = data['context']['image'].shape
-    # size=torch.from_numpy(size)
-    batch=copy.deepcopy(data)
-    out_h, out_w = size[0], size[1]
 
-    if center is not None:
-        center_h, center_w = center
-    else:
-        center_h = np.random.randint(low=out_h // 2 + 1, high=h - out_h // 2 - 1)
-        center_w = np.random.randint(low=out_w // 2 + 1, high=w - out_w // 2 - 1)
-    return batch,center_h,center_w
 
-class GaussianTrainer(BaseTrainer):
+class MvSplatTrainer(BaseTrainer):
     def __init__(self, config) -> None:
         super().__init__(config)
-        
         self.state = 'nerf_only'
 
     def build_networks(self):
-        self.model = GaussianModel(self.config,
+        self.model = MvsplatModel(self.config,
                                 load_opt=not self.config.no_load_opt,
                                 load_scheduler=not self.config.no_load_scheduler,
                                 pretrained=self.config.pretrained)
 
     def setup_optimizer(self):
-        # self.optimizer = torch.optim.Adam([
-        #     dict(params=self.model.gaussian_model.parameters(),lr=self.config.lrate_mlp)
-        # ])
-
-        # self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer,
-        #                                                  step_size=self.config.lrate_decay_steps,
-        #                                                  gamma=self.config.lrate_decay_factor)
-
         self.optimizer = torch.optim.Adam(self.model.gaussian_model.parameters(), lr=self.config.optimizer.lr)
         warm_up_steps = self.config.optimizer.warm_up_steps
         self.scheduler = torch.optim.lr_scheduler.LinearLR(self.optimizer,
@@ -73,15 +51,6 @@ class GaussianTrainer(BaseTrainer):
         self.state_dicts['models']['gaussian'] = self.model.gaussian_model
 
     def train_iteration(self, batch) -> None:
-        ######################### 3-stages training #######################
-        # ---- (1) Train the pose optimizer with self-supervised loss.<---|
-        # |             (10000 iterations)                                |
-        # |--> (2) Train ibrnet while fixing the pose optimizer.          |
-        # |             (10000 iterations)                                |
-        # |--> (3) Jointly train the pose optimizer and ibrnet.           |
-        # |             (10000 iterations)                                |
-        # |-----------_state_machine(state='nerf_only')
-        # |-------------------------->------------------------------------|
         self.optimizer.zero_grad()
         if self.iteration == 0:
             self.state = self.model.switch_state_machine(state='nerf_only')
@@ -109,10 +78,11 @@ class GaussianTrainer(BaseTrainer):
 
         # Logging a random validation view.
         val_data = next(self.val_loader_iterator)
-        score = log_view_to_tb(
-            self.writer, self.iteration, self.config, self.model,
-            render_stride=self.config.render_stride, prefix='val/',
-            data=val_data, dataset=self.val_dataset, device=self.device)
+        score = 0
+        # score = log_view_to_tb(
+        #     self.writer, self.iteration, self.config, self.model,
+        #     render_stride=self.config.render_stride, prefix='val/',
+        #     data=val_data, dataset=self.val_dataset, device=self.device)
         torch.cuda.empty_cache()
         self.model.switch_to_train()
 
@@ -167,11 +137,12 @@ def log_view_to_tb(writer, global_step, args, model, render_stride=1, prefix='',
 @hydra.main(
     version_base=None,
     config_path="./configs",
-    config_name="finetune_dgaussian_stable",
+    config_name="finetune_mvsplat_stable",
 )
 
 def train(cfg_dict: DictConfig):
     args = cfg_dict
+    set_cfg(cfg_dict)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -187,7 +158,7 @@ def train(cfg_dict: DictConfig):
         
     device = "cuda:{}".format(args.local_rank)
 
-    trainer = GaussianTrainer(args)
+    trainer = MvSplatTrainer(args)
     trainer.train()
 
 if __name__ == '__main__':
