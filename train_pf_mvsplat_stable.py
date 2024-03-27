@@ -10,7 +10,7 @@ from ggrt.global_cfg import set_cfg
 from ggrt.geometry.depth import inv2depth
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
 from ggrt.model.dbarf import DBARFModel
-from ggrt.model.GGRtPlus import DGaussianModel
+from ggrt.model.GGRtPlus import GGRtPlusModel
 from ggrt.projection import Projector
 from ggrt.pose_util import Pose, rotation_distance
 from ggrt.render_ray import render_rays
@@ -33,7 +33,7 @@ class DGaussianTrainer(BaseTrainer):
         self.projector = Projector(device=self.device)
 
     def build_networks(self):
-        self.model = DGaussianModel(self.config,
+        self.model = GGRtPlusModel(self.config,
                                 load_opt=not self.config.no_load_opt,
                                 load_scheduler=not self.config.no_load_scheduler,
                                 pretrained=self.config.pretrained)
