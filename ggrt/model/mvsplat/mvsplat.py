@@ -156,21 +156,21 @@ class MvSplat(nn.Module):
     def forward(self, batch, global_step):
         batch: BatchedExample = self.data_shim(batch)
         _, _, _, h, w = batch["target"]["image"].shape
-        for i in range(batch["context"]["image"].shape[1] - 1):
-            tmp_batch = self.batch_cut(batch["context"],i)
-            tmp_gaussians = self.encoder(
-                tmp_batch, global_step, False, scene_names=batch["scene"]
-            )
-            if i == 0:
-                gaussians: Gaussians = tmp_gaussians
-            else:
-                gaussians.covariances = torch.cat([gaussians.covariances, tmp_gaussians.covariances], dim=1)
-                gaussians.means = torch.cat([gaussians.means, tmp_gaussians.means], dim=1)
-                gaussians.harmonics = torch.cat([gaussians.harmonics, tmp_gaussians.harmonics], dim=1)
-                gaussians.opacities = torch.cat([gaussians.opacities, tmp_gaussians.opacities], dim=1)
-        # gaussians = self.encoder(
-        #     batch["context"], global_step, False, scene_names=batch["scene"]
-        # )
+        # for i in range(batch["context"]["image"].shape[1] - 1):
+        #     tmp_batch = self.batch_cut(batch["context"],i)
+        #     tmp_gaussians = self.encoder(
+        #         tmp_batch, global_step, False, scene_names=batch["scene"]
+        #     )
+        #     if i == 0:
+        #         gaussians: Gaussians = tmp_gaussians
+        #     else:
+        #         gaussians.covariances = torch.cat([gaussians.covariances, tmp_gaussians.covariances], dim=1)
+        #         gaussians.means = torch.cat([gaussians.means, tmp_gaussians.means], dim=1)
+        #         gaussians.harmonics = torch.cat([gaussians.harmonics, tmp_gaussians.harmonics], dim=1)
+        #         gaussians.opacities = torch.cat([gaussians.opacities, tmp_gaussians.opacities], dim=1)
+        gaussians = self.encoder(
+            batch["context"], global_step, False, scene_names=batch["scene"]
+        )
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
@@ -180,6 +180,15 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-        ret = {'rgb': output.color, 'depth': output.depth}
-        target_gt = {'rgb': batch["target"]["image"]}
+        output_ref = self.decoder.forward(
+            gaussians,
+            batch["context"]["extrinsics"],
+            batch["context"]["intrinsics"],
+            batch["context"]["near"],
+            batch["context"]["far"],
+            (h, w),
+            depth_mode='depth',
+        )
+        ret = {'rgb': torch.cat([output.color,output_ref.color],dim=1), 'depth': output.depth}
+        target_gt = {'rgb': torch.cat([batch["target"]["image"],batch["context"]["image"]],dim=1)}
         return ret, target_gt

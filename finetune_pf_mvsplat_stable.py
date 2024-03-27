@@ -74,19 +74,17 @@ class DGaussianTrainer(BaseTrainer):
         # |--> (3) Jointly train the pose optimizer and ibrnet.           |
         # |             (10000 iterations)                                |
         # |-------------------------->------------------------------------|
-        if self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 0:
-            self.state = self.model.switch_state_machine(state='pose_only')
-        elif self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 1:
-            self.state = self.model.switch_state_machine(state='nerf_only')
-        if self.iteration != 0 and self.iteration % 500 == 0:
-            self.state = self.model.switch_state_machine(state='joint')
-
-        # if self.iteration == 0:
+        # if self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 0:
+        #     self.state = self.model.switch_state_machine(state='pose_only')
+        # elif self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 1:
+        #     self.state = self.model.switch_state_machine(state='nerf_only')
+        # if self.iteration != 0 and self.iteration % 500 == 0:
         #     self.state = self.model.switch_state_machine(state='joint')
+
+        if self.iteration == 0:
+            self.state = self.model.switch_state_machine(state='joint')
         
         min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
-        coefficient=1e-5
-        alpha = math.pow(2.0, -coefficient * self.iteration)
         # Start of core optimization loop
         pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
             fmaps=None,
@@ -113,8 +111,24 @@ class DGaussianTrainer(BaseTrainer):
         batch = self.model.gaussian_model.data_shim(batch)
         ret, data_gt = self.model.gaussian_model(batch, self.iteration)
         
+        loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
-        coarse_loss.backward()     
+        loss_dict['gaussian_loss'] = coarse_loss
+
+        if self.state == 'pose_only' or self.state == 'joint':
+            loss_dict['sfm_loss'] = sfm_loss['loss']
+            self.scalars_to_log['loss/photometric_loss'] = sfm_loss['metrics']['photometric_loss']
+            if 'smoothness_loss' in sfm_loss['metrics']:
+                self.scalars_to_log['loss/smoothness_loss'] = sfm_loss['metrics']['smoothness_loss']
+
+        if self.state == 'joint':
+            loss_all += self.model.compose_joint_loss(
+                loss_dict['sfm_loss'], loss_dict['gaussian_loss'], self.iteration)
+        elif self.state == 'pose_only':
+            loss_all += loss_dict['sfm_loss']
+        else: # nerf_only
+            loss_all += loss_dict['gaussian_loss']
+        loss_all.backward()
 
         if self.state == 'pose_only' or self.state == 'joint':
             self.pose_optimizer.step()
@@ -283,7 +297,7 @@ def log_view_to_tb(writer, global_step, args, model, render_stride=1, prefix='',
 @hydra.main(
     version_base=None,
     config_path="./configs",
-    config_name="finetune_dgaussian_stable",
+    config_name="finetune_mvsplat_stable",
 )
 
 def train(cfg_dict: DictConfig):

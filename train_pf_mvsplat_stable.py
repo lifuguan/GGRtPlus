@@ -1,12 +1,12 @@
 import random
 import numpy as np
-import os
 import hydra
 from omegaconf import DictConfig
 
 import torch
 import torch.utils.data.distributed
 
+from ggrt.global_cfg import set_cfg
 from ggrt.geometry.depth import inv2depth
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
 from ggrt.model.dbarf import DBARFModel
@@ -21,16 +21,14 @@ from ggrt.visualization.feature_visualizer import *
 from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_shim
 from train_ibrnet import synchronize
 from ggrt.base.trainer import BaseTrainer
-
-from ggrt.config as config
+import ggrt.config as config
 from ggrt.loss.criterion import MaskedL2ImageLoss, self_sup_depth_loss
 
-# torch.autograd.set_detect_anomaly(True)
+import wandb 
 
 class DGaussianTrainer(BaseTrainer):
     def __init__(self, config) -> None:
         super().__init__(config)
-        
         self.state = 'pose_only'
         self.projector = Projector(device=self.device)
 
@@ -65,7 +63,9 @@ class DGaussianTrainer(BaseTrainer):
         self.state_dicts['optimizers']['pose_optimizer'] = self.pose_optimizer
         self.state_dicts['schedulers']['pose_scheduler'] = self.pose_scheduler
 
-    def train_iteration(self, data_batch) -> None:
+    def train_iteration(self, batch) -> None:
+        self.optimizer.zero_grad()
+        self.pose_optimizer.zero_grad()
         ######################### 3-stages training #######################
         # ---- (1) Train the pose optimizer with self-supervised loss.<---|
         # |             (10000 iterations)                                |
@@ -74,54 +74,46 @@ class DGaussianTrainer(BaseTrainer):
         # |--> (3) Jointly train the pose optimizer and ibrnet.           |
         # |             (10000 iterations)                                |
         # |-------------------------->------------------------------------|
-        if self.iteration % 7500 == 0 and (self.iteration // 7500) % 2 == 0:
+        if self.iteration % 5000 == 0 and (self.iteration // 5000) % 2 == 0:
             self.state = self.model.switch_state_machine(state='pose_only')
-        elif self.iteration % 7500 == 0 and (self.iteration // 7500) % 2 == 1:
+        elif self.iteration % 5000 == 0 and (self.iteration // 5000) % 2 == 1:
             self.state = self.model.switch_state_machine(state='nerf_only')
-        if self.iteration != 0 and self.iteration % 15000 == 0:
+        if self.iteration != 0 and self.iteration % 5000 == 0:
             self.state = self.model.switch_state_machine(state='joint')
 
-        min_depth, max_depth = data_batch['depth_range'][0][0], data_batch['depth_range'][0][1]
+        # if self.iteration == 0:
+        #     self.state = self.model.switch_state_machine(state='joint')
         
+        min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
         # Start of core optimization loop
         pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
             fmaps=None,
-            target_image=data_batch['rgb'].to(self.device),
-            ref_imgs=data_batch['src_rgbs'].to(self.device),
-            target_camera=data_batch['camera'],
-            ref_cameras=data_batch['src_cameras'],
+            target_image=batch['rgb'].cuda(),
+            ref_imgs=batch['src_rgbs'].cuda(),
+            target_camera=batch['camera'],
+            ref_cameras=batch['src_cameras'],
             min_depth=min_depth,
             max_depth=max_depth,
-            scaled_shape=data_batch['scaled_shape'])
+            scaled_shape=batch['scaled_shape'])
 
         # The predicted inverse depth is used as a weak supervision to NeRF.
         self.pred_inv_depth = pred_inv_depths[-1]
         inv_depth_prior = pred_inv_depths[-1].detach().clone()
         inv_depth_prior = inv_depth_prior.reshape(-1, 1)
-        
+
         if self.config.use_pred_pose is True:
-            num_views = data_batch['src_cameras'].shape[1]
-            target_pose = data_batch['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(self.device)
+            num_views = batch['src_cameras'].shape[1]
+            target_pose = batch['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(self.device)
             context_poses = self.projector.get_train_poses(target_pose, pred_rel_poses[:, -1, :])
-            data_batch['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
-        batch = data_shim(data_batch, device=self.device)
-        batch = self.model.gaussian_model.data_shim(batch)       
+            batch['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
+        
+        batch = data_shim(batch, device=self.device)
+        batch = self.model.gaussian_model.data_shim(batch)
         ret, data_gt = self.model.gaussian_model(batch, self.iteration)
-
-        loss_all = 0
-        loss_dict = {}
-
-        # compute loss
-        self.optimizer.zero_grad()
-        self.pose_optimizer.zero_grad()
-
+        
+        loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
         loss_dict['gaussian_loss'] = coarse_loss
-
-        if self.config.use_depth_loss is True:
-            rendered_depth = ret['depth'][0].permute(1, 2, 0).reshape(-1, 1)
-            loss_depth = self_sup_depth_loss(1 / inv_depth_prior, rendered_depth, min_depth, max_depth)
-            loss_dict['self-sup-depth'] = loss_depth
 
         if self.state == 'pose_only' or self.state == 'joint':
             loss_dict['sfm_loss'] = sfm_loss['loss']
@@ -130,17 +122,14 @@ class DGaussianTrainer(BaseTrainer):
                 self.scalars_to_log['loss/smoothness_loss'] = sfm_loss['metrics']['smoothness_loss']
 
         if self.state == 'joint':
-            loss_all += loss_dict['self-sup-depth'].item() * 0.04
             loss_all += self.model.compose_joint_loss(
                 loss_dict['sfm_loss'], loss_dict['gaussian_loss'], self.iteration)
         elif self.state == 'pose_only':
             loss_all += loss_dict['sfm_loss']
         else: # nerf_only
-            loss_all += loss_dict['self-sup-depth'].item() * 0.04
             loss_all += loss_dict['gaussian_loss']
-
-        # with torch.autograd.detect_anomaly():
         loss_all.backward()
+
         if self.state == 'pose_only' or self.state == 'joint':
             self.pose_optimizer.step()
             self.pose_scheduler.step()
@@ -153,24 +142,27 @@ class DGaussianTrainer(BaseTrainer):
             mse_error = img2mse(ret['rgb'], data_gt['rgb']).item()
             self.scalars_to_log['train/coarse-loss'] = mse_error
             self.scalars_to_log['train/coarse-psnr'] = mse2psnr(mse_error)
-            self.scalars_to_log['loss/final'] = loss_all.item()
+            # self.scalars_to_log['loss/final'] = loss_all.item()
             self.scalars_to_log['loss/rgb_coarse'] = coarse_loss.detach().item()
-            # print(f"corse loss: {mse_error}, psnr: {mse2psnr(mse_error)}")
+            print(f"corse loss: {mse_error}, psnr: {mse2psnr(mse_error)}")
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
             self.scalars_to_log['lr/pose'] = self.pose_scheduler.get_last_lr()[0]
             
             aligned_pred_poses, poses_gt = align_predicted_training_poses(
                 pred_rel_poses[:, -1, :], self.train_data, self.train_dataset, self.config.local_rank)
             pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
-            visualize_cameras(self.visdom, step=self.iteration, poses=[aligned_pred_poses, poses_gt], cam_depth=0.1)
+            # visualize_cameras(self.visdom, step=self.iteration, poses=[aligned_pred_poses, poses_gt], cam_depth=0.1)
 
             self.scalars_to_log['train/R_error_mean'] = pose_error['R_error_mean']
             self.scalars_to_log['train/t_error_mean'] = pose_error['t_error_mean']
             self.scalars_to_log['train/R_error_med'] = pose_error['R_error_med']
             self.scalars_to_log['train/t_error_med'] = pose_error['t_error_med']
+            if self.config.expname != 'debug':
+                wandb.log(self.scalars_to_log)
 
     def validate(self) -> float:
         self.model.switch_to_eval()
+        torch.cuda.empty_cache()
 
         target_image = self.train_data['rgb'].squeeze(0).permute(2, 0, 1)
         pred_inv_depth_gray = self.pred_inv_depth.squeeze(0).detach().cpu()
@@ -184,10 +176,11 @@ class DGaussianTrainer(BaseTrainer):
 
         # Logging a random validation view.
         val_data = next(self.val_loader_iterator)
-        score = log_view_to_tb(
-            self.writer, self.iteration, self.config, self.model,
-            render_stride=self.config.render_stride, prefix='val/',
-            data=val_data, dataset=self.val_dataset, device=self.device)
+        score = 0
+        # score = log_view_to_tb(
+        #     self.writer, self.iteration, self.config, self.model,
+        #     render_stride=self.config.render_stride, prefix='val/',
+        #     data=val_data, dataset=self.val_dataset, device=self.device)
         torch.cuda.empty_cache()
         self.model.switch_to_train()
 
@@ -266,7 +259,7 @@ def log_view_to_tb(writer, global_step, args, model, render_stride=1, prefix='',
 
     batch = data_shim(data, device=device)
     batch = model.gaussian_model.data_shim(batch)
-    ret, data_gt = model.gaussian_model(batch, global_step)
+    ret, data_gt,ret_ref,data_ref = model.gaussian_model(batch, global_step)
         
 
     average_im = batch['context']['image'].cpu().mean(dim=(0, 1))
@@ -301,16 +294,15 @@ def log_view_to_tb(writer, global_step, args, model, render_stride=1, prefix='',
 
     return psnr_curr_img
 
-
-
 @hydra.main(
     version_base=None,
     config_path="./configs",
-    config_name="pretrain_dgaussian_stable",
+    config_name="pretrain_mvsplat_stable",
 )
-def train(cfg_dict: DictConfig):
 
+def train(cfg_dict: DictConfig):
     args = cfg_dict
+    set_cfg(cfg_dict)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
@@ -318,16 +310,18 @@ def train(cfg_dict: DictConfig):
     torch.cuda.manual_seed_all(args.seed)
 
     # Configuration for distributed training.
-    # if args.distributed:
-    if False:
-        args.local_rank = int(os.environ["LOCAL_RANK"])
+    if args.distributed:
         torch.cuda.set_device(args.local_rank)
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
         print(f'[INFO] Train in distributed mode')
-        
-    device = "cuda:{}".format(args.local_rank)
 
+    if args.local_rank == 0 and args.expname != 'debug':
+        wandb.init(
+            entity="gyy456",
+            project="mvsplat",
+            name=args.expname,
+        )
     trainer = DGaussianTrainer(args)
     trainer.train()
 
