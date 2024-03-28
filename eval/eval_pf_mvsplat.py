@@ -1,5 +1,6 @@
 import sys
 import hydra
+from pathlib import Path
 from omegaconf import DictConfig
 
 # sys.path.append('./')
@@ -7,6 +8,10 @@ from omegaconf import DictConfig
 import visdom
 import imageio
 import lpips
+from eval_dbarf import compose_state_dicts
+from einops import rearrange, repeat
+from matplotlib import cm
+from torchvision.utils import save_image
 
 from torch.utils.data import DataLoader
 
@@ -25,11 +30,10 @@ from ggrt.model.mvsplat.mvsplat import MvSplat
 from ggrt.pose_util import Pose
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
 from ggrt.pose_util import rotation_distance
-from eval_dbarf import compose_state_dicts
 from ggrt.visualization.pose_visualizer import visualize_cameras
-from einops import rearrange, repeat
-from matplotlib import cm
-from torchvision.utils import save_image
+from ggrt.model.mvsplat.ply_export import export_ply
+
+
 mse2psnr = lambda x: -10. * np.log(x+TINY_NUMBER) / np.log(10.)
 
 @torch.no_grad()
@@ -252,11 +256,10 @@ def eval(cfg_dict: DictConfig):
             
             batch = data_shim(data, device="cuda:0")
             batch = gaussian_model.data_shim(batch)       
-            output, gt_rgb = gaussian_model(batch, i)
+            output, gt_rgb, visualization_dump, gaussians = gaussian_model.inference(batch, i)
             depth = depth_map(output['depth'][0][0])
             depth = depth.detach().cpu().permute(1, 2, 0)
-            # depth = depth_map(output['depth'][0])
-            # depth = depth.detach().cpu().permute(0,2, 3, 1)
+
             gt_rgb = gt_rgb['rgb'].detach().cpu()[0][0].permute(1, 2, 0)
             coarse_pred_rgb = output['rgb'].detach().cpu()[0][0].permute(1, 2, 0)
             coarse_err_map = torch.sum((coarse_pred_rgb - gt_rgb) ** 2, dim=-1).numpy()
@@ -275,6 +278,16 @@ def eval(cfg_dict: DictConfig):
             gt_rgb_np_uint8 = (255 * np.clip(gt_rgb.numpy(), a_min=0, a_max=1.)).astype(np.uint8)
             imageio.imwrite(os.path.join(out_scene_dir, '{}_gt_rgb.png'.format(file_id)), gt_rgb_np_uint8)
             
+            if file_id == '040_0' or file_id == '160_0':
+                export_ply(
+                    batch["context"]["extrinsics"][0, 0],
+                    gaussians.means[0],
+                    visualization_dump["scales"][0],
+                    visualization_dump["rotations"][0],
+                    gaussians.harmonics[0],
+                    gaussians.opacities[0],
+                    Path(os.path.join(out_scene_dir, f"{file_id}.ply")),
+                )
             if args.render_video is True:
                 sum_coarse_psnr += coarse_psnr
                 running_mean_coarse_psnr = sum_coarse_psnr / (i + 1)

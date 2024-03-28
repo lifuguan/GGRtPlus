@@ -1,10 +1,11 @@
 import random
 import numpy as np
-
+from random import randint
 import hydra
 from omegaconf import DictConfig
 
 import torch
+import torch.nn as nn
 import torch.utils.data.distributed
 
 from ggrt.global_cfg import set_cfg
@@ -13,13 +14,7 @@ from ggrt.visualization.feature_visualizer import *
 from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_shim
 from train_ibrnet import synchronize
 from ggrt.base.trainer import BaseTrainer
-
-from ggrt.loss.criterion import MaskedL2ImageLoss
-from math import ceil
-# torch.autograd.set_detect_anomaly(True)
-import copy
-from torchvision.utils import save_image
-from einops import rearrange
+from ggrt.loss.criterion import MaskedL2ImageLoss, patch_norm_mse_loss, patch_norm_mse_loss_global, loss_depth_smoothness
 
 
 
@@ -45,20 +40,28 @@ class MvSplatTrainer(BaseTrainer):
     def setup_loss_functions(self):
         self.rgb_loss = MaskedL2ImageLoss()
 
-
     def compose_state_dicts(self) -> None:
         self.state_dicts = {'models': dict(), 'optimizers': dict(), 'schedulers': dict()}
         self.state_dicts['models']['gaussian'] = self.model.gaussian_model
 
     def train_iteration(self, batch) -> None:
+        patch_range = batch['patch_range']
         self.optimizer.zero_grad()
         if self.iteration == 0:
             self.state = self.model.switch_state_machine(state='nerf_only')
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
         ret, data_gt = self.model.gaussian_model(batch, self.iteration)
-        coarse_loss = self.rgb_loss(ret, data_gt)
-        coarse_loss.backward()     
+        loss_all = 0
+        loss_all += self.rgb_loss(ret, data_gt)
+        if self.config.use_kl_depth_loss is True:
+            depth_mono = 255.0 - data_gt['depth'][0]
+            loss_depth_local = patch_norm_mse_loss(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
+            if self.iteration > 2000:
+                loss_all += 0.05 * loss_depth_smoothness(ret['depth'], depth_mono)
+            loss_depth_global = patch_norm_mse_loss_global(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
+            loss_all += 0.005 * loss_depth_local + 0.5 * loss_depth_global
+        loss_all.backward()     
 
         self.optimizer.step()
         self.scheduler.step()

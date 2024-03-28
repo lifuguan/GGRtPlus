@@ -162,6 +162,33 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
+            
         ret = {'rgb': output.color, 'depth': output.depth}
-        target_gt = {'rgb': batch["target"]["image"]}
+        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
         return ret, target_gt
+    
+    def inference(self, batch, global_step):
+        batch: BatchedExample = self.data_shim(batch)
+        _, _, _, h, w = batch["target"]["image"].shape
+        visualization_dump = {}
+
+        # Run the model.
+        gaussians = self.encoder(
+            batch["context"], global_step, 
+            deterministic=True, 
+            scene_names=batch["scene"],
+            visualization_dump=visualization_dump,
+        )
+        output = self.decoder.forward(
+            gaussians,
+            batch["target"]["extrinsics"],
+            batch["target"]["intrinsics"],
+            batch["target"]["near"],
+            batch["target"]["far"],
+            (h, w),
+            depth_mode='depth',
+        )
+            
+        ret = {'rgb': output.color, 'depth': output.depth}
+        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
+        return ret, target_gt, visualization_dump, gaussians
