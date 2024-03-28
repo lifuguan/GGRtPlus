@@ -20,14 +20,14 @@
             "args": [
                 "++rootdir=data/ibrnet/train",
                 "+ckpt_path=model_zoo/pf_mvsplat.pth",
-                "++train_dataset=llff_test",
-                "++train_scenes=[room]",
-                "++eval_dataset=llff_test",
-                "++eval_scenes=[room]",
-                "++num_source_views=7",
+                "++train_dataset=waymo",
+                "++train_scenes=[019]",
+                "++eval_dataset=waymo",
+                "++eval_scenes=[019]",
+                "++num_source_views=4",
                 "++use_pred_pose=False",
                 "++render_video=False",
-                "++expname=pf_mvsplat_ft_room_ref_loss"
+                "++expname=ft_mvsplat_waymo_progressive"
             ]
         },
         {
@@ -43,16 +43,16 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/eval",
-                "+ckpt_path=data/ibrnet/train/out/pf_mvsplat_ft_room/model/model_003000.pth",
+                "+ckpt_path=data/ibrnet/train/out/pf_mvsplat_ft_019/model/model_003000.pth",
                 // "+ckpt_path=data/ibrnet/train/out/pf_mvsplat_ft_019/model/model_002500.pth", 
-                "++train_dataset=llff_test",
-                "++train_scenes=[room]",
-                "++eval_dataset=llff_test",
-                "++eval_scenes=[room]",
-                "++num_source_views=7",
+                "++train_dataset=waymo",
+                "++train_scenes=[019]",
+                "++eval_dataset=waymo",
+                "++eval_scenes=[019]",
+                "++num_source_views=4",
                 "++render_video=False",
                 "++use_pred_pose=False",
-                "++expname=llff_room_ref_loss"
+                "++expname=pf_mvsplat_ft_019"
             ]
         },
         {
@@ -215,7 +215,7 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "2",
+                "CUDA_VISIBLE_DEVICES": "0",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "finetune:mvsplat-room",
@@ -232,7 +232,7 @@
                 "++eval_dataset=llff_test",
                 "++eval_scenes=[room]",
                 "++num_source_views=4",
-                "++expname=ft_mvsplat_room"
+                "++expname=ft_mvsplat_room_concat"
             ]
         },
         {

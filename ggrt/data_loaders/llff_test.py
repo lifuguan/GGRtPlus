@@ -29,7 +29,7 @@ from .base_utils import downsample_gaussian_blur
 
 class LLFFTestDataset(Dataset):
     def __init__(self, args, mode, scenes=(), random_crop=True, **kwargs):
-        self.folder_path = "data/nerf_llff_data"
+        self.folder_path =  'data/nerf_llff_data/'
         self.dataset_name = 'llff'
         self.pose_noise_level = 0
 
@@ -50,9 +50,9 @@ class LLFFTestDataset(Dataset):
         self.node_id_to_idx_list = []
         self.train_view_graphs = []
     
-        self.image_size = (176, 240)
-        # self.image_size = (504,760)  
-        # self.image_size = (224, 320)
+        # self.image_size = (176, 240)
+        self.image_size = (224, 320)
+        # self.image_size = (352, 480)
         out_w = 448
         self.ratio = 448 / 504
         self.h, self.w = int(self.ratio*378), int(out_w)
@@ -97,7 +97,7 @@ class LLFFTestDataset(Dataset):
             if mode == 'train' or mode == 'eval_pose':
                 i_render = i_train
             else:
-                i_render = i_train
+                i_render = i_test
 
             self.train_intrinsics.append(intrinsics[i_train])
             self.train_poses.append(c2w_mats[i_train])

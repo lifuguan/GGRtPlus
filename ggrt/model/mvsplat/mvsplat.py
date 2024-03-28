@@ -89,14 +89,14 @@ class MvSplat(nn.Module):
                                                         1,
                                                         total_iters=warm_up_steps)
 
-    def batch_cut(self, batch, i):
+    def batch_cut(self, batch, idx1, idx2):
         return {
-            'extrinsics': batch['extrinsics'][:,i:i+2,:,:],
-            'intrinsics': batch['intrinsics'][:,i:i+2,:,:],
-            'image': batch['image'][:,i:i+2,:,:,:],
-            'near': batch['near'][:,i:i+2],
-            'far': batch['far'][:,i:i+2],
-            'index': batch['index'][:,i:i+2],
+            'extrinsics': torch.cat([batch['extrinsics'][:,idx1:idx1+1,:,:], batch['extrinsics'][:,idx2:idx2+1,:,:]], dim=1),
+            'intrinsics': torch.cat([batch['intrinsics'][:,idx1:idx1+1,:,:], batch['intrinsics'][:,idx2:idx2+1,:,:]], dim=1),
+            'image': torch.cat([batch['image'][:,idx1:idx1+1,...], batch['image'][:,idx2:idx2+1,...]], dim=1),
+            'near': torch.cat([batch['near'][:,idx1:idx1+1], batch['near'][:,idx2:idx2+1]], dim=1),
+            'far': torch.cat([batch['far'][:,idx1:idx1+1], batch['far'][:,idx2:idx2+1]], dim=1),
+            'index': torch.cat([batch['index'][:,idx1:idx1+1], batch['index'][:,idx2:idx2+1]], dim=1),
         }
     def trajectory_fn(self,batch,t):
             _, v, _, _ = batch["context"]["extrinsics"].shape
@@ -156,12 +156,23 @@ class MvSplat(nn.Module):
     def forward(self, batch, global_step):
         batch: BatchedExample = self.data_shim(batch)
         _, _, _, h, w = batch["target"]["image"].shape
-        # for i in range(batch["context"]["image"].shape[1] - 1):
-        #     tmp_batch = self.batch_cut(batch["context"],i)
-        #     tmp_gaussians = self.encoder(
-        #         tmp_batch, global_step, False, scene_names=batch["scene"]
-        #     )
-        #     if i == 0:
+
+        # index_sort = np.argsort([int(s.item()) for s in batch["context"]["index"][0]])
+        # str_current_idx = [str(item) for item in batch["context"]["index"][0].cpu().numpy()]
+        # unused_indexs = set(list(self.last_ref_gaussians.keys())) - set(str_current_idx) 
+        # if len(unused_indexs) > 0:
+        #         for unused_idx in tuple(unused_indexs):
+        #            del self.last_ref_gaussians[unused_idx]
+        # gaussians = None
+        # for k in range(len(index_sort)-1):
+        #     if str_current_idx[index_sort[k]] in self.last_ref_gaussians.keys(): # 如果已经计算过，则直接使用
+        #             tmp_gaussians = self.last_ref_gaussians[str_current_idx[index_sort[k]]].detach()
+        #     else:
+        #         tmp_batch = self.batch_cut(batch["context"], index_sort[k], index_sort[k+1])   
+        #         tmp_gaussians = self.encoder(
+        #             tmp_batch, global_step, False, scene_names=batch["scene"]
+        #         )
+        #     if gaussians is None:
         #         gaussians: Gaussians = tmp_gaussians
         #     else:
         #         gaussians.covariances = torch.cat([gaussians.covariances, tmp_gaussians.covariances], dim=1)
@@ -180,15 +191,17 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-        output_ref = self.decoder.forward(
-            gaussians,
-            batch["context"]["extrinsics"],
-            batch["context"]["intrinsics"],
-            batch["context"]["near"],
-            batch["context"]["far"],
-            (h, w),
-            depth_mode='depth',
-        )
-        ret = {'rgb': torch.cat([output.color,output_ref.color],dim=1), 'depth': output.depth}
-        target_gt = {'rgb': torch.cat([batch["target"]["image"],batch["context"]["image"]],dim=1)}
+        # output_ref = self.decoder.forward(
+        #     gaussians,
+        #     batch["context"]["extrinsics"],
+        #     batch["context"]["intrinsics"],
+        #     batch["context"]["near"],
+        #     batch["context"]["far"],
+        #     (h, w),
+        #     depth_mode='depth',
+        # )
+        ret = {'rgb': output.color, 'depth': output.depth}
+        target_gt = {'rgb': batch["target"]["image"]}
+        # ret = {'rgb': torch.cat([output.color,output_ref.color],dim=1), 'depth': output.depth}
+        # target_gt = {'rgb': torch.cat([batch["target"]["image"],batch["context"]["image"]],dim=1)}
         return ret, target_gt
