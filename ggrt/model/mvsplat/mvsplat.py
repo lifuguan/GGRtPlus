@@ -157,31 +157,31 @@ class MvSplat(nn.Module):
         batch: BatchedExample = self.data_shim(batch)
         _, _, _, h, w = batch["target"]["image"].shape
 
-        # index_sort = np.argsort([int(s.item()) for s in batch["context"]["index"][0]])
-        # str_current_idx = [str(item) for item in batch["context"]["index"][0].cpu().numpy()]
-        # unused_indexs = set(list(self.last_ref_gaussians.keys())) - set(str_current_idx) 
-        # if len(unused_indexs) > 0:
-        #         for unused_idx in tuple(unused_indexs):
-        #            del self.last_ref_gaussians[unused_idx]
-        # gaussians = None
-        # for k in range(len(index_sort)-1):
-        #     if str_current_idx[index_sort[k]] in self.last_ref_gaussians.keys(): # 如果已经计算过，则直接使用
-        #             tmp_gaussians = self.last_ref_gaussians[str_current_idx[index_sort[k]]].detach()
-        #     else:
-        #         tmp_batch = self.batch_cut(batch["context"], index_sort[k], index_sort[k+1])   
-        #         tmp_gaussians = self.encoder(
-        #             tmp_batch, global_step, False, scene_names=batch["scene"]
-        #         )
-        #     if gaussians is None:
-        #         gaussians: Gaussians = tmp_gaussians
-        #     else:
-        #         gaussians.covariances = torch.cat([gaussians.covariances, tmp_gaussians.covariances], dim=1)
-        #         gaussians.means = torch.cat([gaussians.means, tmp_gaussians.means], dim=1)
-        #         gaussians.harmonics = torch.cat([gaussians.harmonics, tmp_gaussians.harmonics], dim=1)
-        #         gaussians.opacities = torch.cat([gaussians.opacities, tmp_gaussians.opacities], dim=1)
-        gaussians = self.encoder(
-            batch["context"], global_step, False, scene_names=batch["scene"]
-        )
+        index_sort = np.argsort([int(s.item()) for s in batch["context"]["index"][0]])
+        str_current_idx = [str(item) for item in batch["context"]["index"][0].cpu().numpy()]
+        unused_indexs = set(list(self.last_ref_gaussians.keys())) - set(str_current_idx) 
+        if len(unused_indexs) > 0:
+                for unused_idx in tuple(unused_indexs):
+                   del self.last_ref_gaussians[unused_idx]
+        gaussians = None
+        for k in range(len(index_sort)-1):
+            if str_current_idx[index_sort[k]] in self.last_ref_gaussians.keys(): # 如果已经计算过，则直接使用
+                    tmp_gaussians = self.last_ref_gaussians[str_current_idx[index_sort[k]]].detach()
+            else:
+                tmp_batch = self.batch_cut(batch["context"], index_sort[k], index_sort[k+1])   
+                tmp_gaussians = self.encoder(
+                    tmp_batch, global_step, False, scene_names=batch["scene"]
+                )
+            if gaussians is None:
+                gaussians: Gaussians = tmp_gaussians
+            else:
+                gaussians.covariances = torch.cat([gaussians.covariances, tmp_gaussians.covariances], dim=1)
+                gaussians.means = torch.cat([gaussians.means, tmp_gaussians.means], dim=1)
+                gaussians.harmonics = torch.cat([gaussians.harmonics, tmp_gaussians.harmonics], dim=1)
+                gaussians.opacities = torch.cat([gaussians.opacities, tmp_gaussians.opacities], dim=1)
+        # gaussians = self.encoder(
+        #     batch["context"], global_step, False, scene_names=batch["scene"]
+        # )
         output = self.decoder.forward(
             gaussians,
             batch["target"]["extrinsics"],
