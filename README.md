@@ -1,7 +1,7 @@
 
 
 ## Infer Depth Anything on Waymo
-CUDA_VISIBLE_DEVICES=0 python infer_depth.py --img-path data/waymo/training/297/images --save_npy
+CUDA_VISIBLE_DEVICES=0 python infer_depth.py --img-path data/waymo/training/146/images --save_npy
 CUDA_VISIBLE_DEVICES=1 python infer_depth.py --img-path data/waymo/training/302/images --save_npy
 CUDA_VISIBLE_DEVICES=3 python infer_depth.py --img-path data/waymo/training/312/images --save_npy
 CUDA_VISIBLE_DEVICES=4 python infer_depth.py --img-path data/waymo/training/314/images --save_npy

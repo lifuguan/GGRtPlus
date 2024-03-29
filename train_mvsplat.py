@@ -102,12 +102,6 @@ def log_view_to_tb(writer, global_step, args, model, render_stride=1, prefix='',
     print(f"validation step: {global_step}; target: {data['target']['index']}; ref: {data['context']['index']}")
     batch = data_shim(data, device=device)
     batch = model.gaussian_model.data_shim(batch)
-
-
-    # features=  model.gaussian_model.encoder.backbone(batch['context'])
-    # features = rearrange(features, "b v c h w -> b v h w c").to(torch.float)
-    # features = model.gaussian_model.encoder.backbone_projection(features)
-    # features = rearrange(features, "b v h w c -> b v c h w")
     ret, data_gt = model.gaussian_model(batch, global_step)
         
 
