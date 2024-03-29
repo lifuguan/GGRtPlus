@@ -48,33 +48,50 @@ class MvSplatTrainer(BaseTrainer):
         self.optimizer.zero_grad()
         if self.iteration == 0:
             self.state = self.model.switch_state_machine(state='nerf_only')
+        
+        ######### train nerf_only #########    
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
-        ret, data_gt = self.model.gaussian_model(batch, self.iteration)
+        ret, data_gt, ret_ref, data_gt_ref = self.model.gaussian_model(batch, self.iteration)
+        
+        ############# loss #############
         loss_all = 0
         loss_all += self.rgb_loss(ret, data_gt)
         if self.config.use_kl_depth_loss is True:
-            depth_mono = 255.0 - data_gt['depth'][0]
-            loss_depth_local = patch_norm_mse_loss(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
-            if self.iteration > 20000:
-                loss_all += 0.05 * loss_depth_smoothness(ret['depth'], depth_mono)
-            loss_depth_global = patch_norm_mse_loss_global(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
-            loss_all += 0.001 * loss_depth_local + 0.1 * loss_depth_global
-        loss_all.backward()     
-
+            loss_depth = self.kl_depth_loss(patch_range, ret, data_gt, smooth_iter=2000)
+            loss_all += loss_depth
+        
+        if self.config.use_aux_loss is True:
+            loss_all += self.config.aux_cof * self.rgb_loss(ret_ref, data_gt_ref)
+            # if self.config.use_kl_depth_loss is True:
+            #     loss_depth_aux = self.kl_depth_loss(patch_range, ret_ref, data_gt_ref, smooth_iter=2000)
+            #     loss_all += self.config.aux_cof * loss_depth_aux
+            
+        loss_all.backward()
         self.optimizer.step()
         self.scheduler.step()
     
+        ############### logging ###############
         if self.config.local_rank == 0 and self.iteration % self.config.n_tensorboard == 0:
             mse_error = img2mse(ret['rgb'], data_gt['rgb']).item(); psnr = mse2psnr(mse_error)
             self.scalars_to_log['train/coarse-loss'] = mse_error
             self.scalars_to_log['train/coarse-psnr'] = psnr
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
             if self.config.use_kl_depth_loss is True:
-                self.scalars_to_log['train/depth-loss'] = loss_depth_global.item()
+                self.scalars_to_log['train/depth-loss'] = loss_depth.item()
             if self.config.expname != 'debug':
                 wandb.log(self.scalars_to_log)
-            print(f"train step: {self.iteration}; target: {int(batch['target']['index'][0])}; ref: {batch['context']['index']}; loss: {mse_error:.4f}, psnr: {psnr:.2f}")
+            print(f"train step: {self.iteration}; target: {int(batch['target']['index'][0])}; ref: {batch['context']['index'].cpu().numpy()}; loss: {mse_error:.4f}, psnr: {psnr:.2f}")
+
+    def kl_depth_loss(self, patch_range, ret, data_gt, smooth_iter = 20000):
+        depth_loss = 0
+        depth_mono = 255.0 - data_gt['depth'][0]
+        loss_depth_local = patch_norm_mse_loss(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
+        if self.iteration > smooth_iter:
+            depth_loss += 0.05 * loss_depth_smoothness(ret['depth'], depth_mono)
+        loss_depth_global = patch_norm_mse_loss_global(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
+        depth_loss += 0.001 * loss_depth_local + 0.1 * loss_depth_global
+        return depth_loss
         
     def validate(self) -> float:
         self.model.switch_to_eval()

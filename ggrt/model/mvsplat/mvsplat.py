@@ -162,10 +162,23 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-            
         ret = {'rgb': output.color, 'depth': output.depth}
         target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
-        return ret, target_gt
+        if get_cfg().use_aux_loss is True:
+            output_ref = self.decoder.forward(
+                gaussians,
+                batch["context"]["extrinsics"],
+                batch["context"]["intrinsics"],
+                batch["context"]["near"],
+                batch["context"]["far"],
+                (h, w),
+                depth_mode='depth',
+            )
+            ret_ref = {'rgb': output_ref.color, 'depth': output_ref.depth}
+            target_gt_ref = {'rgb': batch["context"]["image"], 'depth': batch["context"]["depth"]}    
+            return ret, target_gt, ret_ref, target_gt_ref
+        else:
+            return ret, target_gt, _, _
     
     def inference(self, batch, global_step):
         batch: BatchedExample = self.data_shim(batch)

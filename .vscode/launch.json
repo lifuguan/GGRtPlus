@@ -30,10 +30,10 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "1",
+                "CUDA_VISIBLE_DEVICES": "3",
                 "PYTHONPATH": "${workspaceFolder}"
             },
-            "name": "test:pf_mvsplat_ft_019",
+            "name": "test:pf_mvsplat_019",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/eval/eval_pf_mvsplat.py",
@@ -41,7 +41,7 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/eval",
-                "+ckpt_path=data/ibrnet/train/out/ft_mvsplat_019/model/model_002000.pth", 
+                "+ckpt_path=data/ibrnet/train/out/ft_mvsplat_019_depth_w_aux/model/model_003000.pth", 
                 "++train_dataset=waymo",
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
@@ -49,7 +49,7 @@
                 "++num_source_views=4",
                 "++render_video=False",
                 "++use_pred_pose=False",
-                "++expname=ft_mvsplat_019"
+                "++expname=ft_mvsplat_019_depth_w_aux"
             ]
         },
         {
@@ -147,6 +147,32 @@
         },
         {
             "env": {
+                "CUDA_VISIBLE_DEVICES": "1",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "name": "finetune:mvsplat-019(depth+aux)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_mvsplat.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "++rootdir=data/ibrnet/train",
+                "+ckpt_path=model_zoo/pf_mvsplat.pth", 
+                "++train_dataset=waymo",
+                "++train_scenes=['019']",
+                "++eval_dataset=waymo",
+                "++eval_scenes=['019']",
+                "++use_kl_depth_loss=True",
+                "++use_aux_loss=True",
+                "++render_video=False",
+                "++num_source_views=4",
+                "++expname=ft_mvsplat_019_depth_w_aux"
+                // "++expname=debug"
+            ]
+        },
+        {
+            "env": {
                 "CUDA_VISIBLE_DEVICES": "2",
                 "PYTHONPATH": "${workspaceFolder}"
             },
@@ -158,7 +184,8 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/train",
-                "+ckpt_path=model_zoo/pf_mvsplat.pth", 
+                // "+ckpt_path=model_zoo/pf_mvsplat.pth", 
+                "+ckpt_path=data/ibrnet/train/out/generalized_mvsplat_waymo_depth_low_cof/model/model_016000.pth", 
                 "++train_dataset=waymo",
                 "++train_scenes=[]",
                 "++eval_dataset=waymo",

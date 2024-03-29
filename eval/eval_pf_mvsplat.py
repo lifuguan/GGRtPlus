@@ -164,9 +164,7 @@ def eval(cfg_dict: DictConfig):
     args = cfg_dict
     set_cfg(cfg_dict)
     args.distributed = False
-    # args.mvsplat['encoder']['epipolar_transformer']['num_context_views'] = args.num_source_views
-    
-    
+
     # Create IBRNet model
     model = DBARFModel(args, load_scheduler=False, load_opt=False, pretrained=False)
     state_dicts = compose_state_dicts(model=model)
@@ -178,7 +176,6 @@ def eval(cfg_dict: DictConfig):
     decoder = get_decoder(args.mvsplat.decoder)
     gaussian_model = MvSplat(encoder, decoder, encoder_visualizer)
     gaussian_model.load_state_dict(torch.load(args.ckpt_path)['gaussian'])
-    # gaussian_model.load_state_dict(torch.load(args.ckpt_path)['state_dict'])
     gaussian_model.cuda()
     
     eval_dataset_name = args.eval_dataset
