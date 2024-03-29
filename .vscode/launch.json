@@ -147,6 +147,31 @@
         },
         {
             "env": {
+                "CUDA_VISIBLE_DEVICES": "2",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "name": "generalized:mvsplat-waymo(depth)",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_mvsplat.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "++rootdir=data/ibrnet/train",
+                "+ckpt_path=model_zoo/pf_mvsplat.pth", 
+                "++train_dataset=waymo",
+                "++train_scenes=[]",
+                "++eval_dataset=waymo",
+                "++eval_scenes=[]",
+                "++use_kl_depth_loss=True",
+                "++n_iters=30000",
+                "++render_video=False",
+                "++num_source_views=4",
+                "++expname=generalized_mvsplat_waymo_depth_low_cof"
+            ]
+        },
+        {
+            "env": {
                 "CUDA_VISIBLE_DEVICES": "6",
                 "PYTHONPATH": "${workspaceFolder}"
             },

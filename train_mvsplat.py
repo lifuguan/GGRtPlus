@@ -3,20 +3,19 @@ import numpy as np
 from random import randint
 import hydra
 from omegaconf import DictConfig
+import wandb 
 
 import torch
 import torch.nn as nn
 import torch.utils.data.distributed
 
+from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_shim
 from ggrt.global_cfg import set_cfg
 from ggrt.model.mvsplat_network import MvsplatModel
 from ggrt.visualization.feature_visualizer import *
-from utils_loc import img2mse, mse2psnr, img_HWC2CHW, colorize, img2psnr, data_shim
 from train_ibrnet import synchronize
 from ggrt.base.trainer import BaseTrainer
 from ggrt.loss.criterion import MaskedL2ImageLoss, patch_norm_mse_loss, patch_norm_mse_loss_global, loss_depth_smoothness
-
-
 
 class MvSplatTrainer(BaseTrainer):
     def __init__(self, config) -> None:
@@ -57,10 +56,10 @@ class MvSplatTrainer(BaseTrainer):
         if self.config.use_kl_depth_loss is True:
             depth_mono = 255.0 - data_gt['depth'][0]
             loss_depth_local = patch_norm_mse_loss(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
-            if self.iteration > 2000:
+            if self.iteration > 20000:
                 loss_all += 0.05 * loss_depth_smoothness(ret['depth'], depth_mono)
             loss_depth_global = patch_norm_mse_loss_global(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
-            loss_all += 0.005 * loss_depth_local + 0.5 * loss_depth_global
+            loss_all += 0.001 * loss_depth_local + 0.1 * loss_depth_global
         loss_all.backward()     
 
         self.optimizer.step()
@@ -71,6 +70,10 @@ class MvSplatTrainer(BaseTrainer):
             self.scalars_to_log['train/coarse-loss'] = mse_error
             self.scalars_to_log['train/coarse-psnr'] = psnr
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
+            if self.config.use_kl_depth_loss is True:
+                self.scalars_to_log['train/depth-loss'] = loss_depth_global.item()
+            if self.config.expname != 'debug':
+                wandb.log(self.scalars_to_log)
             print(f"train step: {self.iteration}; target: {int(batch['target']['index'][0])}; ref: {batch['context']['index']}; loss: {mse_error:.4f}, psnr: {psnr:.2f}")
         
     def validate(self) -> float:
@@ -158,8 +161,14 @@ def train(cfg_dict: DictConfig):
         torch.distributed.init_process_group(backend="nccl", init_method="env://")
         synchronize()
         print(f'[INFO] Train in distributed mode')
-        
-    device = "cuda:{}".format(args.local_rank)
+
+    if args.local_rank == 0 and args.expname != 'debug':
+        wandb.init(
+            entity="lifuguan",
+            project="mvsplat",
+            name=args.expname,
+            config=dict(args),
+        )
 
     trainer = MvSplatTrainer(args)
     trainer.train()

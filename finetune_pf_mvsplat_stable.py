@@ -321,6 +321,7 @@ def train(cfg_dict: DictConfig):
             entity="lifuguan",
             project="mvsplat",
             name=args.expname,
+            config=dict(args),
         )
     device = "cuda:{}".format(args.local_rank)
 
