@@ -252,7 +252,7 @@ class WaymoStaticDataset(Dataset):
         depth_file = self.render_depth_files[idx]
         render_name = rgb_file[-9:-4]
         rgb = imageio.imread(rgb_file).astype(np.float32) / 255.
-        depth = imageio.imread(depth_file).astype(np.float32)
+        depth = cv2.imread(depth_file, cv2.IMREAD_GRAYSCALE).astype(np.float32) # TODO：修改
         render_pose = self.render_poses[idx]
                 
         # translation = np.array([3, 0, 0])
@@ -320,7 +320,7 @@ class WaymoStaticDataset(Dataset):
         src_intrinsics, src_extrinsics = [], []
         for id in nearest_pose_ids:
             src_rgb = imageio.imread(train_rgb_files[id]).astype(np.float32) / 255.
-            src_depth = imageio.imread(train_depth_files[id]).astype(np.float32)
+            src_depth = cv2.imread(train_depth_files[id], cv2.IMREAD_GRAYSCALE).astype(np.float32)
             src_name.append(id)
             train_pose = train_poses[id]
             train_intrinsics_ = train_intrinsics[id]
@@ -362,7 +362,6 @@ class WaymoStaticDataset(Dataset):
             pix_extrinsics[:, :3, 3] /= scale
         else:
             scale = 1
-
         return {'rgb': torch.from_numpy(pix_rgb[..., :3]),
                 'camera': torch.from_numpy(camera),
                 'rgb_path': rgb_file,

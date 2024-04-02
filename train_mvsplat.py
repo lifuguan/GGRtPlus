@@ -44,7 +44,8 @@ class MvSplatTrainer(BaseTrainer):
         self.state_dicts['models']['gaussian'] = self.model.gaussian_model
 
     def train_iteration(self, batch) -> None:
-        patch_range = batch['patch_range']
+        if self.config.use_kl_depth_loss is True:
+            patch_range = batch['patch_range']
         self.optimizer.zero_grad()
         if self.iteration == 0:
             self.state = self.model.switch_state_machine(state='nerf_only')

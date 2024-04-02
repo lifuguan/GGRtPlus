@@ -43,7 +43,8 @@ class LLFFDataset(Dataset):
         self.node_id_to_idx_list = []
         self.train_view_graphs = []
 
-        self.image_size = (176, 240)
+        # self.image_size = (224, 320)
+        self.image_size = (352, 480)
 
         # print(f'num scenes: {len(scenes)}')
         all_scenes = os.listdir(base_dir)
@@ -52,6 +53,8 @@ class LLFFDataset(Dataset):
                 scenes = [scenes]
         else:
             scenes = all_scenes
+        print("loading {} for {}".format(scenes, mode))
+        print(f'[INFO] num scenes: {len(scenes)}')
         for i, scene in enumerate(scenes):
             scene_path = os.path.join(base_dir, scene)
             factor = 4
