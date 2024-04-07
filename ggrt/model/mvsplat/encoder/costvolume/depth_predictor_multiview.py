@@ -363,7 +363,7 @@ class DepthPredictorMultiView(nn.Module):
         self,
         features,
         intrinsics,
-        extrinsics,
+        # extrinsics,
         near,
         far,
         gaussians_per_pixel=1,
@@ -438,7 +438,7 @@ class DepthPredictorMultiView(nn.Module):
                     prepare_feat_proj_data_lists(
                         features,
                         intrinsics,
-                        extrinsics, # ext_pred
+                        extrinsics_pred, # ext_pred
                         near,
                         far,
                         num_samples=self.num_depth_candidates,
@@ -568,4 +568,4 @@ class DepthPredictorMultiView(nn.Module):
                     srf=1,
                 )
 
-        return depths, densities, raw_gaussians,extrinsics
+        return depths, densities, raw_gaussians,extrinsics_pred

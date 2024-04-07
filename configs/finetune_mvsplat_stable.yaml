@@ -33,7 +33,7 @@ no_load_opt: True
 no_load_scheduler: True
 
 ### TRAINING
-n_iters: 100000
+n_iters: 10000
 use_pred_pose: False
 use_kl_depth_loss: False
 use_aux_loss: False
@@ -46,7 +46,7 @@ optimizer:
 ### CONSOLE AND TENSORBOARD
 n_validation : 1000
 n_tensorboard : 2
-n_checkpoint : 10000
+n_checkpoint : 1000
 visdom_port : 9000
 
 ### evaluation options

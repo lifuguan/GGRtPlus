@@ -92,8 +92,8 @@ class WaymoStaticDataset(Dataset):
             # self.image_size = (176, 240)
         else:
             # self.image_size = (640,960)        
-            # self.image_size = (504,760)    
-            self.image_size = (224, 320)
+            self.image_size = (504,760)    
+            # self.image_size = (224, 320)
         all_scenes = os.listdir(self.folder_path)
     
         ############     Wamyo Parameters     ############

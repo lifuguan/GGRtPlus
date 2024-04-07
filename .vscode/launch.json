@@ -6,7 +6,7 @@
     "configurations": [
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "5",
+                "CUDA_VISIBLE_DEVICES": "1",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "finetune:pf-mvsplat-019",
@@ -22,10 +22,35 @@
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=[019]",
-                "++num_source_views=3",
+                "++num_source_views=4",
                 "++use_pred_pose=False",
                 "++render_video=False",
-                "++expname=pf_mvsplat_ft_019_ipnet"
+                "++expname=pf_mvsplat_ft_019_ipnet_4"
+            ]
+        },
+        {
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "5",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "name": "generalized:mvsplat-llff",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/finetune_pf_mvsplat_stable.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "++rootdir=data/ibrnet/train",
+                "+ckpt_path=model_zoo/pf_mvsplat_iponet.pth", 
+                "++train_dataset=llff",
+                "++train_scenes=[]",
+                "++eval_dataset=llff_test",
+                "++eval_scenes=['room']",
+                "++num_source_views=4",
+                "++use_pred_pose=False",
+                "++use_aux_loss=False",
+                "++n_iters=10000",
+                "++expname=generalized_mvspla_pf_view_4"
             ]
         },
         {
@@ -41,15 +66,15 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/eval",
-                "+ckpt_path=model_zoo/pf_mvsplat_iponet.pth", 
+                "+ckpt_path=data/ibrnet/train/out/pf_mvsplat_ft_019_ipnet_3/model/model_004000.pth", 
                 "++train_dataset=waymo",
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
-                "++num_source_views=4",
+                "++num_source_views=3",
                 "++render_video=False",
                 "++use_pred_pose=False",
-                "++expname=ft_mvsplat_019_iponet"
+                "++expname=ft_mvsplat_019_iponet_3"
             ]
         },
         {

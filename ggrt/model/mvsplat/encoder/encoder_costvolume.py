@@ -175,10 +175,10 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
         extra_info["scene_names"] = scene_names
         gpp = self.cfg.gaussians_per_pixel
         image_size = context["image"].shape[-2:]
-        depths, densities, raw_gaussians, extrinsics = self.depth_predictor(
+        depths, densities, raw_gaussians, extrinsics_pred = self.depth_predictor(
             in_feats,
             context["intrinsics"],
-            context["extrinsics"],
+            # context["extrinsics"],
             context["near"],
             context["far"],
             gaussians_per_pixel=gpp,
@@ -202,7 +202,7 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
         xy_ray = xy_ray + (offset_xy - 0.5) * pixel_size
         gpp = self.cfg.gaussians_per_pixel
         gaussians = self.gaussian_adapter.forward(
-            rearrange(context["extrinsics"], "b v i j -> b v () () () i j"),
+            rearrange(extrinsics_pred, "b v i j -> b v () () () i j"),
             rearrange(context["intrinsics"], "b v i j -> b v () () () i j"),
             rearrange(xy_ray, "b v r srf xy -> b v r srf () xy"),
             depths,
@@ -246,7 +246,7 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
                 opacity_multiplier * gaussians.opacities,
                 "b v r srf spp -> b (v r srf spp)",
             ),
-        ),extrinsics
+        ),extrinsics_pred
 
     def get_data_shim(self) -> DataShim:
         def data_shim(batch: BatchedExample) -> BatchedExample:

@@ -163,7 +163,11 @@ class MvSplat(nn.Module):
             depth_mode='depth',
         )
         ret = {'rgb': output.color, 'depth': output.depth, "ex": extrinsics_pred}
-        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
+        if 'depth' in batch["target"].keys():
+            target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
+        else:
+            target_gt = {'rgb': batch["target"]["image"],'ex': batch["context"]["extrinsics"]}
+            
         if get_cfg().use_aux_loss is True:
             output_ref = self.decoder.forward(
                 gaussians,
@@ -175,10 +179,35 @@ class MvSplat(nn.Module):
                 depth_mode='depth',
             )
             ret_ref = {'rgb': output_ref.color, 'depth': output_ref.depth}
-            target_gt_ref = {'rgb': batch["context"]["image"], 'depth': batch["context"]["depth"]}    
+            if 'depth' in batch["context"].keys():
+                target_gt_ref = {'rgb': batch["context"]["image"], 'depth': batch["context"]["depth"]}    
+            else:
+                target_gt_ref = {'rgb': batch["context"]["image"]}    
             return ret, target_gt, ret_ref, target_gt_ref
         else:
             return ret, target_gt, _, _
+
+
+
+
+        # ret = {'rgb': output.color, 'depth': output.depth, "ex": extrinsics_pred}
+        # target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
+        # if get_cfg().use_aux_loss is True:
+        #     output_ref = self.decoder.forward(
+        #         gaussians,
+        #         batch["context"]["extrinsics"],
+        #         batch["context"]["intrinsics"],
+        #         batch["context"]["near"],
+        #         batch["context"]["far"],
+        #         (h, w),
+        #         depth_mode='depth',
+        #     )
+        #     ret_ref = {'rgb': output_ref.color, 'depth': output_ref.depth}
+        #     target_gt_ref = {'rgb': batch["context"]["image"], 'depth': batch["context"]["depth"]}    
+        #     return ret, target_gt, ret_ref, target_gt_ref
+        # else:
+        #     return ret, target_gt, _, _
+        
     
     def inference(self, batch, global_step):
         batch: BatchedExample = self.data_shim(batch)
@@ -202,6 +231,6 @@ class MvSplat(nn.Module):
             depth_mode='depth',
         )
             
-        ret = {'rgb': output.color, 'depth': output.depth}
-        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
-        return ret, target_gt, visualization_dump, gaussians,extrinsics_pred
+        ret = {'rgb': output.color, 'depth': output.depth,'ex':extrinsics_pred}
+        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
+        return ret, target_gt, visualization_dump, gaussians

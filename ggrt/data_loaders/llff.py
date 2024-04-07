@@ -43,7 +43,7 @@ class LLFFDataset(Dataset):
         self.node_id_to_idx_list = []
         self.train_view_graphs = []
 
-        self.image_size = (176, 240)
+        self.image_size = (224, 320)
 
         # print(f'num scenes: {len(scenes)}')
         all_scenes = os.listdir(base_dir)

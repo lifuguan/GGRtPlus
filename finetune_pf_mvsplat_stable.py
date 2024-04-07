@@ -105,15 +105,15 @@ class GGRtPlusTrainer(BaseTrainer):
         
         min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
         # Start of core optimization loop
-        pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
-            fmaps=None,
-            target_image=batch['rgb'].cuda(),
-            ref_imgs=batch['src_rgbs'].cuda(),
-            target_camera=batch['camera'],
-            ref_cameras=batch['src_cameras'],
-            min_depth=min_depth,
-            max_depth=max_depth,
-            scaled_shape=batch['scaled_shape'])
+        # pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
+        #     fmaps=None,
+        #     target_image=batch['rgb'].cuda(),
+        #     ref_imgs=batch['src_rgbs'].cuda(),
+        #     target_camera=batch['camera'],
+        #     ref_cameras=batch['src_cameras'],
+        #     min_depth=min_depth,
+        #     max_depth=max_depth,
+        #     scaled_shape=batch['scaled_shape'])
 
         # The predicted inverse depth is used as a weak supervision to NeRF.
         # self.pred_inv_depth = pred_inv_depths[-1]
@@ -132,9 +132,9 @@ class GGRtPlusTrainer(BaseTrainer):
         
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
-        pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
+        # pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
         loss_dict['gaussian_loss'] = coarse_loss
-        loss_dict['pose_loss'] = pose_loss
+        # loss_dict['pose_loss'] = pose_loss
         # if self.state == 'pose_only' or self.state == 'joint':
         #     loss_dict['sfm_loss'] = sfm_loss['loss']
         #     self.scalars_to_log['loss/photometric_loss'] = sfm_loss['metrics']['photometric_loss']
@@ -148,7 +148,7 @@ class GGRtPlusTrainer(BaseTrainer):
         #     loss_all += loss_dict['sfm_loss']
         # else: # nerf_only
         loss_all += loss_dict['gaussian_loss']
-        loss_all += loss_dict['pose_loss']
+        # loss_all += loss_dict['pose_loss']
         loss_all.backward()
 
         # if self.state == 'pose_only' or self.state == 'joint':
