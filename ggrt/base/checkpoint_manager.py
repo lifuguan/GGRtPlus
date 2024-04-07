@@ -148,22 +148,23 @@ class CheckPointManager(object):
             state = torch.load(checkpoint_name, map_location='cuda:0')
 
         step = 0
-        if 'step' in state:
-            step = state['step']
+        if True:
+            if 'step' in state:
+                step = state['step']
 
-        if models is not None:
-            for model_name in models.keys():
-                if not model_name in state.keys():
-                    continue
-                models[model_name].load_state_dict(state[model_name])
+            if models is not None:
+                for model_name in models.keys():
+                    if not model_name in state.keys():
+                        continue
+                    models[model_name].load_state_dict(state[model_name])
 
-        if optimizers is not None:
-            for optim_name in optimizers.keys():
-                optimizers[optim_name].load_state_dict(state[optim_name])
-        
-        if schedulers != None:
-            for scheduler_name in schedulers.keys():
-                schedulers[scheduler_name].load_state_dict(state[scheduler_name])
+            if optimizers is not None:
+                for optim_name in optimizers.keys():
+                    optimizers[optim_name].load_state_dict(state[optim_name])
+            
+            if schedulers != None:
+                for scheduler_name in schedulers.keys():
+                    schedulers[scheduler_name].load_state_dict(state[scheduler_name])
 
-        print(f'[INFO] Loaded models from {checkpoint_name}')
+            print(f'[INFO] Loaded models from {checkpoint_name}')
         return step

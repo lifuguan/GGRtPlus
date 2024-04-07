@@ -63,6 +63,25 @@ class GGRtPlusTrainer(BaseTrainer):
         self.state_dicts['optimizers']['pose_optimizer'] = self.pose_optimizer
         self.state_dicts['schedulers']['pose_scheduler'] = self.pose_scheduler
 
+    def pose_loss(self, pred_pose, gt_pose):
+        pred_rt = pred_pose[:,:,:3,:3]
+        _,v,_,_ = pred_pose.shape
+        gt_rt = gt_pose[:,:,:3,:3]
+        pred_rt_T = pred_rt.permute(0, 1,3,2)
+        rt_loss_all = 0
+        tf_loss_all = 0
+        for i in range(v):
+            rt_r = torch.matmul(pred_rt_T.squeeze(0)[i], gt_rt.squeeze(0)[i])
+            rt_loss = (rt_r.trace()-1)/2
+            rt_loss = torch.arccos(rt_loss)
+            rt_loss_all = rt_loss_all + rt_loss
+            tf_loss = torch.norm(pred_pose.squeeze(0)[i,:3,3] - gt_pose.squeeze(0)[i,:3,3], dim=0)
+            tf_loss_all = tf_loss_all + tf_loss
+        # Compute the rotation distance between predicted and ground truth poses.
+        # Compute the translation distance between predicted and ground truth poses.
+        pose_loss = tf_loss_all + rt_loss_all
+        return pose_loss
+
     def train_iteration(self, batch) -> None:
         self.optimizer.zero_grad()
         self.pose_optimizer.zero_grad()
@@ -82,7 +101,7 @@ class GGRtPlusTrainer(BaseTrainer):
         #     self.state = self.model.switch_state_machine(state='joint')
 
         if self.iteration == 0:
-            self.state = self.model.switch_state_machine(state='joint')
+            self.state = self.model.switch_state_machine(state='nerf_only')
         
         min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
         # Start of core optimization loop
@@ -97,42 +116,44 @@ class GGRtPlusTrainer(BaseTrainer):
             scaled_shape=batch['scaled_shape'])
 
         # The predicted inverse depth is used as a weak supervision to NeRF.
-        self.pred_inv_depth = pred_inv_depths[-1]
-        inv_depth_prior = pred_inv_depths[-1].detach().clone()
-        inv_depth_prior = inv_depth_prior.reshape(-1, 1)
+        # self.pred_inv_depth = pred_inv_depths[-1]
+        # inv_depth_prior = pred_inv_depths[-1].detach().clone()
+        # inv_depth_prior = inv_depth_prior.reshape(-1, 1)
 
-        if self.config.use_pred_pose is True:
-            num_views = batch['src_cameras'].shape[1]
-            target_pose = batch['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(self.device)
-            context_poses = self.projector.get_train_poses(target_pose, pred_rel_poses[:, -1, :])
-            batch['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
+        # if self.config.use_pred_pose is True:
+        #     num_views = batch['src_cameras'].shape[1]
+        #     target_pose = batch['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(self.device)
+        #     context_poses = self.projector.get_train_poses(target_pose, pred_rel_poses[:, -1, :])
+        #     batch['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
         
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
-        ret, data_gt = self.model.gaussian_model(batch, self.iteration)
+        ret, data_gt,_,_ = self.model.gaussian_model(batch, self.iteration)
         
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
+        pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
         loss_dict['gaussian_loss'] = coarse_loss
+        loss_dict['pose_loss'] = pose_loss
+        # if self.state == 'pose_only' or self.state == 'joint':
+        #     loss_dict['sfm_loss'] = sfm_loss['loss']
+        #     self.scalars_to_log['loss/photometric_loss'] = sfm_loss['metrics']['photometric_loss']
+        #     if 'smoothness_loss' in sfm_loss['metrics']:
+        #         self.scalars_to_log['loss/smoothness_loss'] = sfm_loss['metrics']['smoothness_loss']
 
-        if self.state == 'pose_only' or self.state == 'joint':
-            loss_dict['sfm_loss'] = sfm_loss['loss']
-            self.scalars_to_log['loss/photometric_loss'] = sfm_loss['metrics']['photometric_loss']
-            if 'smoothness_loss' in sfm_loss['metrics']:
-                self.scalars_to_log['loss/smoothness_loss'] = sfm_loss['metrics']['smoothness_loss']
-
-        if self.state == 'joint':
-            loss_all += self.model.compose_joint_loss(
-                loss_dict['sfm_loss'], loss_dict['gaussian_loss'], self.iteration)
-        elif self.state == 'pose_only':
-            loss_all += loss_dict['sfm_loss']
-        else: # nerf_only
-            loss_all += loss_dict['gaussian_loss']
+        # if self.state == 'joint':
+        #     loss_all += self.model.compose_joint_loss(
+        #         loss_dict['sfm_loss'], loss_dict['gaussian_loss'], self.iteration)
+        # elif self.state == 'pose_only':
+        #     loss_all += loss_dict['sfm_loss']
+        # else: # nerf_only
+        loss_all += loss_dict['gaussian_loss']
+        loss_all += loss_dict['pose_loss']
         loss_all.backward()
 
-        if self.state == 'pose_only' or self.state == 'joint':
-            self.pose_optimizer.step()
-            self.pose_scheduler.step()
+        # if self.state == 'pose_only' or self.state == 'joint':
+        #     self.pose_optimizer.step()
+        #     self.pose_scheduler.step()
 
         if self.state == 'nerf_only' or self.state == 'joint':
             self.optimizer.step()
@@ -148,15 +169,15 @@ class GGRtPlusTrainer(BaseTrainer):
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
             self.scalars_to_log['lr/pose'] = self.pose_scheduler.get_last_lr()[0]
             
-            aligned_pred_poses, poses_gt = align_predicted_training_poses(
-                pred_rel_poses[:, -1, :], self.train_data, self.train_dataset, self.config.local_rank)
-            pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
+            # aligned_pred_poses, poses_gt = align_predicted_training_poses(
+            #     pred_rel_poses[:, -1, :], self.train_data, self.train_dataset, self.config.local_rank)
+            # pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
             # visualize_cameras(self.visdom, step=self.iteration, poses=[aligned_pred_poses, poses_gt], cam_depth=0.1)
 
-            self.scalars_to_log['train/R_error_mean'] = pose_error['R_error_mean']
-            self.scalars_to_log['train/t_error_mean'] = pose_error['t_error_mean']
-            self.scalars_to_log['train/R_error_med'] = pose_error['R_error_med']
-            self.scalars_to_log['train/t_error_med'] = pose_error['t_error_med']
+            # self.scalars_to_log['train/R_error_mean'] = pose_error['R_error_mean']
+            # self.scalars_to_log['train/t_error_mean'] = pose_error['t_error_mean']
+            # self.scalars_to_log['train/R_error_med'] = pose_error['R_error_med']
+            # self.scalars_to_log['train/t_error_med'] = pose_error['t_error_med']
             if self.config.expname != 'debug':
                 wandb.log(self.scalars_to_log)
 
@@ -165,14 +186,14 @@ class GGRtPlusTrainer(BaseTrainer):
         torch.cuda.empty_cache()
 
         target_image = self.train_data['rgb'].squeeze(0).permute(2, 0, 1)
-        pred_inv_depth_gray = self.pred_inv_depth.squeeze(0).detach().cpu()
-        pred_inv_depth = self.pred_inv_depth.squeeze(0).squeeze(0)
-        pred_depth= inv2depth(pred_inv_depth)
-        pred_depth_color = colorize(pred_depth.detach().cpu(), cmap_name='jet', append_cbar=True).permute(2, 0, 1)
+        # pred_inv_depth_gray = self.pred_inv_depth.squeeze(0).detach().cpu()
+        # pred_inv_depth = self.pred_inv_depth.squeeze(0).squeeze(0)
+        # pred_depth= inv2depth(pred_inv_depth)
+        # pred_depth_color = colorize(pred_depth.detach().cpu(), cmap_name='jet', append_cbar=True).permute(2, 0, 1)
 
         self.writer.add_image('train/target_image', target_image, self.iteration)
-        self.writer.add_image('train/pred_inv_depth', pred_inv_depth_gray, self.iteration)
-        self.writer.add_image('train/pred_depth-color', pred_depth_color, self.iteration)
+        # self.writer.add_image('train/pred_inv_depth', pred_inv_depth_gray, self.iteration)
+        # self.writer.add_image('train/pred_depth-color', pred_depth_color, self.iteration)
 
         # Logging a random validation view.
         val_data = next(self.val_loader_iterator)

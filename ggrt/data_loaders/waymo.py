@@ -24,7 +24,7 @@ from torch.utils.data import Dataset
 from .data_utils import get_nearby_view_ids, random_crop, get_nearest_pose_ids
 from .llff_data_utils import load_llff_data, batch_parse_llff_poses
 from ..pose_util import PoseInitializer
-
+from .geometryutils import relative_transformation
 import random
 from .base_utils import downsample_gaussian_blur
 
@@ -92,7 +92,8 @@ class WaymoStaticDataset(Dataset):
             # self.image_size = (176, 240)
         else:
             # self.image_size = (640,960)        
-            self.image_size = (504,760)        
+            # self.image_size = (504,760)    
+            self.image_size = (224, 320)
         all_scenes = os.listdir(self.folder_path)
     
         ############     Wamyo Parameters     ############
@@ -158,7 +159,25 @@ class WaymoStaticDataset(Dataset):
             self.render_depth_range.extend([[near_depth, far_depth]]*num_render)
             self.render_train_set_ids.extend([i]*num_render)
 
+    def _preprocess_poses(self, poses: torch.Tensor):
+        """Preprocesses the poses by setting first pose in a sequence to identity and computing the relative
+        homogenous transformation for all other poses.
 
+        Args:
+            poses (torch.Tensor): Pose matrices to be preprocessed
+
+        Returns:
+            Output (torch.Tensor): Preprocessed poses
+
+        Shape:
+            - poses: :math:`(L, 4, 4)` where :math:`L` denotes sequence length.
+            - Output: :math:`(L, 4, 4)` where :math:`L` denotes sequence length.
+        """
+        return relative_transformation(
+            poses[0].unsqueeze(0).repeat(poses.shape[0], 1, 1),
+            poses,
+            orthogonal_rotations=False,
+        )
     def load_calibrations(self, scene_path):
         """
         Load the camera intrinsics, extrinsics, timestamps, etc.
@@ -362,7 +381,10 @@ class WaymoStaticDataset(Dataset):
             pix_extrinsics[:, :3, 3] /= scale
         else:
             scale = 1
-
+        target_extrinsics = torch.cat([pix_src_extrinsics[0:1],pix_extrinsics],dim=0)    
+        pix_src_extrinsics = self._preprocess_poses(pix_src_extrinsics)  #以参考帧第一帧为单位矩阵   
+        target_extrinsics = self._preprocess_poses(target_extrinsics)     #同样修改target_extrinsics
+        pix_extrinsics = target_extrinsics[1:2]
         return {'rgb': torch.from_numpy(pix_rgb[..., :3]),
                 'camera': torch.from_numpy(camera),
                 'rgb_path': rgb_file,

@@ -270,7 +270,7 @@ class BaseTrainer(object):
             score=score
         )
 
-    def load_checkpoint(self, load_optimizer=True, load_scheduler=True) -> int:
+    def load_checkpoint(self, load_optimizer=False, load_scheduler=False) -> int:
         iter_start = self.ckpt_manager.load(
             config=self.config,
             models=self.state_dicts['models'],

@@ -174,7 +174,8 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
         extra_info['images'] = rearrange(context["image"], "b v c h w -> (v b) c h w")
         extra_info["scene_names"] = scene_names
         gpp = self.cfg.gaussians_per_pixel
-        depths, densities, raw_gaussians = self.depth_predictor(
+        image_size = context["image"].shape[-2:]
+        depths, densities, raw_gaussians, extrinsics = self.depth_predictor(
             in_feats,
             context["intrinsics"],
             context["extrinsics"],
@@ -184,6 +185,8 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
             deterministic=deterministic,
             extra_info=extra_info,
             cnn_features=cnn_features,
+            image_size=image_size,
+            context_iamge=context["image"]
         )
 
         # Convert the features and depths into Gaussians.
@@ -243,7 +246,7 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
                 opacity_multiplier * gaussians.opacities,
                 "b v r srf spp -> b (v r srf spp)",
             ),
-        )
+        ),extrinsics
 
     def get_data_shim(self) -> DataShim:
         def data_shim(batch: BatchedExample) -> BatchedExample:

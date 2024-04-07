@@ -253,7 +253,7 @@ def eval(cfg_dict: DictConfig):
             
             batch = data_shim(data, device="cuda:0")
             batch = gaussian_model.data_shim(batch)       
-            output, gt_rgb, visualization_dump, gaussians = gaussian_model.inference(batch, i)
+            output, gt_rgb, visualization_dump, gaussians,extrinsics_pred = gaussian_model.inference(batch, i)
             depth = depth_map(output['depth'][0][0])
             depth = depth.detach().cpu().permute(1, 2, 0)
 

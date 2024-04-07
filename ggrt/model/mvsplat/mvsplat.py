@@ -131,7 +131,7 @@ class MvSplat(nn.Module):
     def trajectory_fn_woble(self,batch,t):
             origin_a = batch["context"]["extrinsics"][:, 0, :3, 3]
             origin_b = batch["context"]["extrinsics"][:, -1, :3, 3]
-            delta = (origin_a - origin_b).norm(dim=-1)
+            delta = (origin_a - origin_b).norm(dim=-1) 
             extrinsics = generate_wobble(
                 batch["context"]["extrinsics"][:, 0],
                 delta * 0.25,
@@ -150,7 +150,7 @@ class MvSplat(nn.Module):
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
-        gaussians = self.encoder(
+        gaussians,extrinsics_pred = self.encoder(
             batch["context"], global_step, False, scene_names=batch["scene"]
         )
         output = self.decoder.forward(
@@ -162,8 +162,8 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-        ret = {'rgb': output.color, 'depth': output.depth}
-        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
+        ret = {'rgb': output.color, 'depth': output.depth, "ex": extrinsics_pred}
+        target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
         if get_cfg().use_aux_loss is True:
             output_ref = self.decoder.forward(
                 gaussians,
@@ -186,7 +186,7 @@ class MvSplat(nn.Module):
         visualization_dump = {}
 
         # Run the model.
-        gaussians = self.encoder(
+        gaussians,extrinsics_pred = self.encoder(
             batch["context"], global_step, 
             deterministic=True, 
             scene_names=batch["scene"],
@@ -204,4 +204,4 @@ class MvSplat(nn.Module):
             
         ret = {'rgb': output.color, 'depth': output.depth}
         target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
-        return ret, target_gt, visualization_dump, gaussians
+        return ret, target_gt, visualization_dump, gaussians,extrinsics_pred
