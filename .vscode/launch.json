@@ -6,7 +6,7 @@
     "configurations": [
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "1",
+                "CUDA_VISIBLE_DEVICES": "5",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "finetune:pf-mvsplat-019",
@@ -25,12 +25,12 @@
                 "++num_source_views=4",
                 "++use_pred_pose=False",
                 "++render_video=False",
-                "++expname=pf_mvsplat_ft_019_ipnet_4"
+                "++expname=pf_mvsplat_ft_019_ipnet_4_poseloss_only"
             ]
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "5",
+                "CUDA_VISIBLE_DEVICES": "3",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "generalized:mvsplat-llff",
@@ -49,8 +49,8 @@
                 "++num_source_views=4",
                 "++use_pred_pose=False",
                 "++use_aux_loss=False",
-                "++n_iters=10000",
-                "++expname=generalized_mvspla_pf_view_4"
+                "++n_iters=3000",
+                "++expname=generalized_mvspla_pf_view_4_poseloss"
             ]
         },
         {
@@ -71,10 +71,10 @@
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
-                "++num_source_views=3",
+                "++num_source_views=4",
                 "++render_video=False",
                 "++use_pred_pose=False",
-                "++expname=ft_mvsplat_019_iponet_3"
+                "++expname=ft_mvsplat_019_iponet_4"
             ]
         },
         {

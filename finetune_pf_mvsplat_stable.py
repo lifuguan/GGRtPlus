@@ -81,6 +81,29 @@ class GGRtPlusTrainer(BaseTrainer):
         # Compute the translation distance between predicted and ground truth poses.
         pose_loss = tf_loss_all + rt_loss_all
         return pose_loss
+    def compute_geodesic_distance_from_two_matrices(self,m1, m2):
+        batch=m1.shape[0]
+        m = torch.bmm(m1, m2.transpose(1,2)) #batch*3*3
+        
+        cos = (  m[:,0,0] + m[:,1,1] + m[:,2,2] - 1 )/2
+        cos = torch.min(cos, torch.autograd.Variable(torch.ones(batch).to(m1.device)) )
+        cos = torch.max(cos, torch.autograd.Variable(torch.ones(batch).to(m1.device))*-1 )
+        
+        theta = torch.acos(cos)
+
+        return theta.mean()
+
+
+    @torch.no_grad()
+    def evaluate_camera_alignment(self,aligned_pred_poses, poses_gt):
+        # measure errors in rotation and translation
+        R_aligned, t_aligned = aligned_pred_poses.split([3, 1], dim=-1)
+        R_gt, t_gt = poses_gt.split([3, 1], dim=-1)
+        
+        R_error = rotation_distance(R_aligned[..., :3, :3], R_gt[..., :3, :3])
+        t_error = (t_aligned - t_gt)[..., 0].norm(dim=-1)
+        
+        return R_error, t_error
 
     def train_iteration(self, batch) -> None:
         self.optimizer.zero_grad()
@@ -101,7 +124,7 @@ class GGRtPlusTrainer(BaseTrainer):
         #     self.state = self.model.switch_state_machine(state='joint')
 
         if self.iteration == 0:
-            self.state = self.model.switch_state_machine(state='nerf_only')
+            self.state = self.model.switch_state_machine(state='pose_only')
         
         min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
         # Start of core optimization loop
@@ -134,6 +157,9 @@ class GGRtPlusTrainer(BaseTrainer):
         coarse_loss = self.rgb_loss(ret, data_gt)
         # pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
         loss_dict['gaussian_loss'] = coarse_loss
+
+        loss_dict['pose_loss'] =  (self.compute_geodesic_distance_from_two_matrices(ret['ex'][0,:,:3,:3], data_gt['ex'][0,:,:3,:3]))+torch.norm(ret['ex'][0,:,:3,3]- data_gt['ex'][0,:,:3,3],dim=-1).mean() 
+
         # loss_dict['pose_loss'] = pose_loss
         # if self.state == 'pose_only' or self.state == 'joint':
         #     loss_dict['sfm_loss'] = sfm_loss['loss']
@@ -147,15 +173,25 @@ class GGRtPlusTrainer(BaseTrainer):
         # elif self.state == 'pose_only':
         #     loss_all += loss_dict['sfm_loss']
         # else: # nerf_only
-        loss_all += loss_dict['gaussian_loss']
-        # loss_all += loss_dict['pose_loss']
-        loss_all.backward()
 
-        # if self.state == 'pose_only' or self.state == 'joint':
-        #     self.pose_optimizer.step()
-        #     self.pose_scheduler.step()
-
-        if self.state == 'nerf_only' or self.state == 'joint':
+        if self.state == 'pose_only' :
+            loss_all += loss_dict['gaussian_loss']
+            loss_all.backward()
+            self.pose_optimizer.step()
+            self.pose_scheduler.step()
+        pose_error = evaluate_camera_alignment(ret['ex'], data_gt['ex'])
+        R_errors = pose_error['R_error_mean']
+        t_errors = pose_error['t_error_mean']
+        if self.state == 'nerf_only' :
+            loss_all += loss_dict['gaussian_loss']
+            loss_all += loss_dict['pose_loss']
+            loss_all.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+        if self.state == 'joint':
+            loss_all += loss_dict['gaussian_loss']
+            # loss_all += loss_dict['pose_loss']
+            loss_all.backward()
             self.optimizer.step()
             self.scheduler.step()
 
@@ -168,7 +204,7 @@ class GGRtPlusTrainer(BaseTrainer):
             print(f"corse loss: {mse_error}, psnr: {mse2psnr(mse_error)}")
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
             self.scalars_to_log['lr/pose'] = self.pose_scheduler.get_last_lr()[0]
-            
+            print(f"R_errors: {R_errors}, t_errors: {t_errors}")
             # aligned_pred_poses, poses_gt = align_predicted_training_poses(
             #     pred_rel_poses[:, -1, :], self.train_data, self.train_dataset, self.config.local_rank)
             # pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
