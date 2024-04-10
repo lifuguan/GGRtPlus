@@ -226,21 +226,20 @@ def eval(cfg_dict: DictConfig):
         with torch.no_grad():
 
             # if args.render_video is not True:
-            # pred_inv_depth, pred_rel_poses, _, _ = model.correct_poses(
-            #     fmaps=None,
-            #     target_image=data['rgb'].cuda(),
-            #     ref_imgs=data['src_rgbs'].cuda(),
-            #     target_camera=data['camera'],
-            #     ref_cameras=data['src_cameras'],
-            #     min_depth=data['depth_range'][0][0],
-            #     max_depth=data['depth_range'][0][1],
-            #     scaled_shape=data['scaled_shape'])
-            # pred_inv_depth = pred_inv_depth.squeeze(0).squeeze(0).detach().cpu()
-            # pred_depth = inv2depth(pred_inv_depth)
-            # pred_rel_poses = pred_rel_poses.detach().cpu()
-            # aligned_pred_poses, poses_gt = align_predicted_training_poses(pred_rel_poses, data)
-            # pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
-            # visualize_cameras(visdom_ins, step=i, poses=[aligned_pred_poses, poses_gt], cam_depth=0.1)
+            pred_inv_depth, pred_rel_poses, _, _ = model.correct_poses(
+                fmaps=None,
+                target_image=data['rgb'].cuda(),
+                ref_imgs=data['src_rgbs'].cuda(),
+                target_camera=data['camera'],
+                ref_cameras=data['src_cameras'],
+                min_depth=data['depth_range'][0][0],
+                max_depth=data['depth_range'][0][1],
+                scaled_shape=data['scaled_shape'])
+            pred_inv_depth = pred_inv_depth.squeeze(0).squeeze(0).detach().cpu()
+            pred_depth = inv2depth(pred_inv_depth)
+            pred_rel_poses = pred_rel_poses.detach().cpu()
+            aligned_pred_poses, poses_gt = align_predicted_training_poses(pred_rel_poses, data)
+            pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
             
             # R_errors.append(pose_error[0])
             # t_errors.append(pose_error[1])
@@ -254,12 +253,22 @@ def eval(cfg_dict: DictConfig):
             batch = data_shim(data, device="cuda:0")
             batch = gaussian_model.data_shim(batch)       
             output, gt_rgb, visualization_dump, gaussians = gaussian_model.inference(batch, i)
+
+            visualize_cameras(visdom_ins, step=i, poses=[output['ex'][0], gt_rgb['ex'][0]], cam_depth=0.1)
+
             pose_error = evaluate_camera_alignment(output['ex'], gt_rgb['ex'])
             R_errors.append(pose_error[0])
             t_errors.append(pose_error[1])
             depth = depth_map(output['depth'][0][0])
             depth = depth.detach().cpu().permute(1, 2, 0)
 
+            depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
+            colorize_depths = []
+            for depth in depths:
+                depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
+                colorize_depths.append(depth)
+            colorize_depths = torch.cat(colorize_depths, dim=1)
+            save_image(colorize_depths.permute(2,0,1), os.path.join(out_scene_dir, '{}_colorize_depths.png'.format(file_id)))
             gt_rgb = gt_rgb['rgb'].detach().cpu()[0][0].permute(1, 2, 0)
             coarse_pred_rgb = output['rgb'].detach().cpu()[0][0].permute(1, 2, 0)
             coarse_err_map = torch.sum((coarse_pred_rgb - gt_rgb) ** 2, dim=-1).numpy()
@@ -413,7 +422,7 @@ def eval(cfg_dict: DictConfig):
 
     mean_rotation_error = torch.rad2deg(R_errors.mean())
     mean_position_error = t_errors.mean()
-    med_rotation_error = torch.rad2deg(np.median(R_errors))
+    med_rotation_error = torch.rad2deg(torch.median(R_errors))
     med_position_error = torch.median(t_errors)
 
     metrics_dict = {'R_error_mean': str(mean_rotation_error),

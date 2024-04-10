@@ -363,7 +363,7 @@ class DepthPredictorMultiView(nn.Module):
         self,
         features,
         intrinsics,
-        # extrinsics,
+        extrinsics,
         near,
         far,
         gaussians_per_pixel=1,
@@ -382,6 +382,7 @@ class DepthPredictorMultiView(nn.Module):
         fmap1, fmaps_ref = features[0][0:1], features[0][1:]   #参考帧第一帧为fmap1，其余为fmaps_ref # 1 128 124 188 // 3 128 124 188
         # self.scale_inv_depth = partial(disp_to_depth, min_depth=near[0][0], max_depth=far[0][0])
         device = features.device
+        depth_list = []
         for iter in range(self.num_iters):
             if iter == 0:
                 if cnn_features is not None:
@@ -403,13 +404,14 @@ class DepthPredictorMultiView(nn.Module):
                     hidden_p, inp_p = torch.split(cnet_pose, [self.hdim, self.cdim], dim=1)
                     hidden_p_list.append(torch.tanh(hidden_p))
                     inp_p_list.append(torch.relu(inp_p))
+                pose_predictions_list = []
+                pose_predictions_list.append(torch.cat(pose_predictions,dim=0).unsqueeze(0))
             pose_list = pose_predictions
-
             if iter > 0 :
-                # pose_list = [pose.detach() for pose in pose_list]
+                pose_list = [pose.detach() for pose in pose_list]
                 pose_cost_func_list = []
                 feat_size = features.shape[-2:]
-                # depth_project = depth_project.detach()
+                depth_project = depth_project.detach()
                 depth_project = F.interpolate(depth_project, size=feat_size, mode='bilinear', align_corners=True)  # 下采样
                 for i, fmap_ref in enumerate(fmaps_ref_list):
                     pose_cost_func_list.append(partial(self.get_cost_each, fmap=fmap1, fmap_ref=fmap_ref,
@@ -427,7 +429,7 @@ class DepthPredictorMultiView(nn.Module):
 
                     pose_seqs = pose_seqs[-1]
                     pose_predictions.append(pose_seqs) 
-
+                pose_predictions_list.append(torch.cat(pose_predictions,dim=0).unsqueeze(0))
             num_views = v-1
             query_pose = torch.eye(4).unsqueeze(0).repeat(num_views, 1, 1).to(device)  # [n_views, 4, 4]
             extrinsics_pred=get_train_poses(query_pose,torch.cat(pose_predictions,dim=0))
@@ -553,13 +555,13 @@ class DepthPredictorMultiView(nn.Module):
                     v=v,
                     srf=1,
                 )
-
                 fine_disps = (fullres_disps + delta_disps).clamp(
                     1.0 / rearrange(far, "b v -> (v b) () () ()"),
                     1.0 / rearrange(near, "b v -> (v b) () () ()"),
                 )
                 depths = 1.0 / fine_disps
                 depth_project = depths[0:1]
+                depth_list.append(depth_project)
                 depths = repeat(
                     depths,
                     "(v b) dpt h w -> b v (h w) srf dpt",
@@ -568,4 +570,4 @@ class DepthPredictorMultiView(nn.Module):
                     srf=1,
                 )
 
-        return depths, densities, raw_gaussians,extrinsics_pred
+        return depths, densities, raw_gaussians,extrinsics_pred,torch.cat(pose_predictions_list,dim=0) ,depth_list

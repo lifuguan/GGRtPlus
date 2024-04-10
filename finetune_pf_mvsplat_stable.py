@@ -23,6 +23,8 @@ from train_ibrnet import synchronize
 from ggrt.base.trainer import BaseTrainer
 import ggrt.config as config
 from ggrt.loss.criterion import MaskedL2ImageLoss, self_sup_depth_loss
+from ggrt.loss.photometric_loss import MultiViewPhotometricDecayLoss
+
 
 import wandb 
 
@@ -31,7 +33,7 @@ class GGRtPlusTrainer(BaseTrainer):
         super().__init__(config)
         self.state = 'pose_only'
         self.projector = Projector(device=self.device)
-
+        self.photometric_loss = MultiViewPhotometricDecayLoss()
     def build_networks(self):
         self.model = GGRtPlusModel(self.config,
                                 load_opt=not self.config.no_load_opt,
@@ -107,7 +109,7 @@ class GGRtPlusTrainer(BaseTrainer):
 
     def train_iteration(self, batch) -> None:
         self.optimizer.zero_grad()
-        self.pose_optimizer.zero_grad()
+        # self.pose_optimizer.zero_grad()
         ######################### 3-stages training #######################
         # ---- (1) Train the pose optimizer with self-supervised loss.<---|
         # |             (10000 iterations)                                |
@@ -122,10 +124,13 @@ class GGRtPlusTrainer(BaseTrainer):
         #     self.state = self.model.switch_state_machine(state='nerf_only')
         # if self.iteration != 0 and self.iteration % 500 == 0:
         #     self.state = self.model.switch_state_machine(state='joint')
-
-        if self.iteration == 0:
-            self.state = self.model.switch_state_machine(state='pose_only')
-        
+        # self.state = self.model.switch_state_machine(state='joint')
+        # self.state = 'joint'
+        # self.state = 'joint'
+        if self.iteration % 500 == 0 and (self.iteration // 200) % 2 == 0:
+            self.state = 'pose_only'
+        elif self.iteration % 500 == 0 and (self.iteration // 200) % 2 == 1:
+            self.state = 'nerf_only'
         min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
         # Start of core optimization loop
         # pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
@@ -152,45 +157,35 @@ class GGRtPlusTrainer(BaseTrainer):
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
         ret, data_gt,_,_ = self.model.gaussian_model(batch, self.iteration)
-        
+        sfm_loss = 0
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
         # pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
         loss_dict['gaussian_loss'] = coarse_loss
 
         loss_dict['pose_loss'] =  (self.compute_geodesic_distance_from_two_matrices(ret['ex'][0,:,:3,:3], data_gt['ex'][0,:,:3,:3]))+torch.norm(ret['ex'][0,:,:3,3]- data_gt['ex'][0,:,:3,3],dim=-1).mean() 
-
-        # loss_dict['pose_loss'] = pose_loss
-        # if self.state == 'pose_only' or self.state == 'joint':
-        #     loss_dict['sfm_loss'] = sfm_loss['loss']
-        #     self.scalars_to_log['loss/photometric_loss'] = sfm_loss['metrics']['photometric_loss']
-        #     if 'smoothness_loss' in sfm_loss['metrics']:
-        #         self.scalars_to_log['loss/smoothness_loss'] = sfm_loss['metrics']['smoothness_loss']
-
-        # if self.state == 'joint':
-        #     loss_all += self.model.compose_joint_loss(
-        #         loss_dict['sfm_loss'], loss_dict['gaussian_loss'], self.iteration)
-        # elif self.state == 'pose_only':
-        #     loss_all += loss_dict['sfm_loss']
-        # else: # nerf_only
-
+        sfm_loss = self.photometric_loss(batch['context']['image'][0][0:1], batch['context']['image'][0][1:], ret['depths_iter'], batch["context"]['intrinsics'][0][0:1], batch["context"]['intrinsics'][0][1:], ret['rel_pose_iter'])
+        loss_dict['sfm_loss'] = sfm_loss['loss']
         if self.state == 'pose_only' :
-            loss_all += loss_dict['gaussian_loss']
+            loss_all += loss_dict['pose_loss']
+            loss_all += loss_dict['sfm_loss'][0]
             loss_all.backward()
-            self.pose_optimizer.step()
-            self.pose_scheduler.step()
+            self.optimizer.step()
+            self.scheduler.step()
         pose_error = evaluate_camera_alignment(ret['ex'], data_gt['ex'])
         R_errors = pose_error['R_error_mean']
         t_errors = pose_error['t_error_mean']
         if self.state == 'nerf_only' :
             loss_all += loss_dict['gaussian_loss']
-            loss_all += loss_dict['pose_loss']
+            # loss_all += loss_dict['sfm_loss'][0]
+            # loss_all += loss_dict['pose_loss']
             loss_all.backward()
             self.optimizer.step()
             self.scheduler.step()
         if self.state == 'joint':
             loss_all += loss_dict['gaussian_loss']
-            # loss_all += loss_dict['pose_loss']
+            loss_all += loss_dict['pose_loss']
+            loss_all += loss_dict['sfm_loss'][0]
             loss_all.backward()
             self.optimizer.step()
             self.scheduler.step()
@@ -200,20 +195,21 @@ class GGRtPlusTrainer(BaseTrainer):
             self.scalars_to_log['train/coarse-loss'] = mse_error
             self.scalars_to_log['train/coarse-psnr'] = mse2psnr(mse_error)
             # self.scalars_to_log['loss/final'] = loss_all.item()
+            self.scalars_to_log['loss/pose_coarse'] = loss_dict['pose_loss'].detach().item()
             self.scalars_to_log['loss/rgb_coarse'] = coarse_loss.detach().item()
-            print(f"corse loss: {mse_error}, psnr: {mse2psnr(mse_error)}")
+            print(f"corse loss: {mse_error}, psnr: {mse2psnr(mse_error)},R_errors: {R_errors}, t_errors: {t_errors}")
             self.scalars_to_log['lr/Gaussian'] = self.scheduler.get_last_lr()[0]
             self.scalars_to_log['lr/pose'] = self.pose_scheduler.get_last_lr()[0]
-            print(f"R_errors: {R_errors}, t_errors: {t_errors}")
+            # print(f"R_errors: {R_errors}, t_errors: {t_errors}")
             # aligned_pred_poses, poses_gt = align_predicted_training_poses(
             #     pred_rel_poses[:, -1, :], self.train_data, self.train_dataset, self.config.local_rank)
             # pose_error = evaluate_camera_alignment(aligned_pred_poses, poses_gt)
             # visualize_cameras(self.visdom, step=self.iteration, poses=[aligned_pred_poses, poses_gt], cam_depth=0.1)
 
-            # self.scalars_to_log['train/R_error_mean'] = pose_error['R_error_mean']
-            # self.scalars_to_log['train/t_error_mean'] = pose_error['t_error_mean']
-            # self.scalars_to_log['train/R_error_med'] = pose_error['R_error_med']
-            # self.scalars_to_log['train/t_error_med'] = pose_error['t_error_med']
+            self.scalars_to_log['train/R_error_mean'] = pose_error['R_error_mean']
+            self.scalars_to_log['train/t_error_mean'] = pose_error['t_error_mean']
+            self.scalars_to_log['train/R_error_med'] = pose_error['R_error_med']
+            self.scalars_to_log['train/t_error_med'] = pose_error['t_error_med']
             if self.config.expname != 'debug':
                 wandb.log(self.scalars_to_log)
 

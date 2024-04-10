@@ -8,7 +8,7 @@ expname : test
 rootdir : data/ibrnet/train
 distributed : False
 enable_tensorboard : True
-enable_visdom : False
+enable_visdom : True
 seed : 3407
 pretrained : False
 local_rank : 0
@@ -44,7 +44,7 @@ optimizer:
   warm_up_steps: 500
 
 ### CONSOLE AND TENSORBOARD
-n_validation : 1000
+n_validation : 2000
 n_tensorboard : 2
 n_checkpoint : 1000
 visdom_port : 9000

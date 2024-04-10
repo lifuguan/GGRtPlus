@@ -150,7 +150,7 @@ class MvSplat(nn.Module):
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
-        gaussians,extrinsics_pred = self.encoder(
+        gaussians,extrinsics_pred,rel_pose_iter,depths_list= self.encoder(
             batch["context"], global_step, False, scene_names=batch["scene"]
         )
         output = self.decoder.forward(
@@ -162,7 +162,7 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-        ret = {'rgb': output.color, 'depth': output.depth, "ex": extrinsics_pred}
+        ret = {'rgb': output.color, 'depth': output.depth, "ex": extrinsics_pred, 'rel_pose_iter': rel_pose_iter, 'depths_iter': depths_list}
         if 'depth' in batch["target"].keys():
             target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"],'ex': batch["context"]["extrinsics"]}
         else:
@@ -215,7 +215,7 @@ class MvSplat(nn.Module):
         visualization_dump = {}
 
         # Run the model.
-        gaussians,extrinsics_pred = self.encoder(
+        gaussians,extrinsics_pred,rel_pose_iter,depths_iter = self.encoder(
             batch["context"], global_step, 
             deterministic=True, 
             scene_names=batch["scene"],

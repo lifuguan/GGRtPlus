@@ -22,7 +22,7 @@ sys.path.append('../')
 from .data_utils import get_nearby_view_ids, loader_resize, random_crop, random_flip, get_nearest_pose_ids
 from .llff_data_utils import load_llff_data, batch_parse_llff_poses
 from ..pose_util import PoseInitializer
-
+from .geometryutils import relative_transformation
 
 class LLFFDataset(Dataset):
     def __init__(self, args, mode, scenes=(), **kwargs):
@@ -92,6 +92,26 @@ class LLFFDataset(Dataset):
 
     def __len__(self):
         return len(self.render_rgb_files)
+
+    def _preprocess_poses(self, poses: torch.Tensor):
+        """Preprocesses the poses by setting first pose in a sequence to identity and computing the relative
+        homogenous transformation for all other poses.
+
+        Args:
+            poses (torch.Tensor): Pose matrices to be preprocessed
+
+        Returns:
+            Output (torch.Tensor): Preprocessed poses
+
+        Shape:
+            - poses: :math:`(L, 4, 4)` where :math:`L` denotes sequence length.
+            - Output: :math:`(L, 4, 4)` where :math:`L` denotes sequence length.
+        """
+        return relative_transformation(
+            poses[0].unsqueeze(0).repeat(poses.shape[0], 1, 1),
+            poses,
+            orthogonal_rotations=False,
+        )
 
     def __getitem__(self, idx):
         rgb_file = self.render_rgb_files[idx]
@@ -191,6 +211,9 @@ class LLFFDataset(Dataset):
         else:
             scale = 1
 
+        target_extrinsics = torch.cat([pix_src_extrinsics[0:1],pix_extrinsics],dim=0)    
+        pix_src_extrinsics = self._preprocess_poses(pix_src_extrinsics)  #以参考帧第一帧为单位矩阵   
+        target_extrinsics = self._preprocess_poses(target_extrinsics)     #同样修改target_extrinsics
         
         return {'rgb': torch.from_numpy(rgb[..., :3]),
                 'camera': torch.from_numpy(camera),
