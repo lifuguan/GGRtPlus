@@ -25,6 +25,7 @@ from .spaces_dataset import *
 from .nerf_synthetic import *
 from .scannet import *
 from .waymo import *
+from .robotaxi import RoboTaxiDataset
 dataset_dict = {
     'spaces': SpacesFreeDataset,
     'google_scanned': GoogleScannedDataset,
@@ -36,4 +37,5 @@ dataset_dict = {
     'scannet': ScannetDataset,
     'llff_test': LLFFTestDataset,
     'waymo': WaymoStaticDataset,
+    'robotaxi': RoboTaxiDataset,
 }

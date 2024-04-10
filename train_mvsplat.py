@@ -91,7 +91,7 @@ class MvSplatTrainer(BaseTrainer):
         if self.iteration > smooth_iter:
             depth_loss += 0.05 * loss_depth_smoothness(ret['depth'], depth_mono)
         loss_depth_global = patch_norm_mse_loss_global(ret['depth'], depth_mono, randint(patch_range[0], patch_range[1]), 0.001)
-        depth_loss += 0.001 * loss_depth_local + 0.1 * loss_depth_global
+        depth_loss += 0.001 * loss_depth_local + 0.01 * loss_depth_global
         return depth_loss
         
     def validate(self) -> float:

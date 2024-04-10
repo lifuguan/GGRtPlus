@@ -49,8 +49,10 @@ def loader_resize(rgb, camera, src_rgbs, src_cameras, depth = None, src_depths =
     if depth is not None:
         depth = cv2.resize(depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
         src_depths = [cv2.resize(src_depth, (out_w, out_h), interpolation=cv2.INTER_LINEAR) for src_depth in src_depths]
-    rgb = cv2.resize(rgb, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
-    src_rgbs = [cv2.resize(src_rgb, (out_w, out_h), interpolation=cv2.INTER_LINEAR) for src_rgb in src_rgbs]
+    rgb = cv2.resize(downsample_gaussian_blur(
+                rgb, ratio_y), (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+    src_rgbs = [cv2.resize(downsample_gaussian_blur(
+                src_rgb, ratio_y), (out_w, out_h), interpolation=cv2.INTER_LINEAR) for src_rgb in src_rgbs]
     src_rgbs = np.stack(src_rgbs, axis=0)
     src_depths = np.stack(src_depths, axis=0)
     return rgb, depth, camera, src_rgbs, src_depths, src_cameras, intrinsics[..., :3, :3], src_intrinsics[..., :3, :3]
@@ -130,6 +132,7 @@ class WaymoStaticDataset(Dataset):
             far_depth = 100
             
             i_test = i_test[::args.llffhold] if mode != 'eval_pose' else []
+            # i_test = i_test[::200] if mode != 'eval_pose' else []
             i_train = np.array([j for j in np.arange(len(rgb_files)) if
                                 (j not in i_test and j not in i_test)])
             

@@ -275,16 +275,8 @@ def eval(cfg_dict: DictConfig):
             gt_rgb_np_uint8 = (255 * np.clip(gt_rgb.numpy(), a_min=0, a_max=1.)).astype(np.uint8)
             imageio.imwrite(os.path.join(out_scene_dir, '{}_gt_rgb.png'.format(file_id)), gt_rgb_np_uint8)
             
-            if file_id == '040_0' or file_id == '160_0':
-                export_ply(
-                    batch["context"]["extrinsics"][0, 0],
-                    gaussians.means[0],
-                    visualization_dump["scales"][0],
-                    visualization_dump["rotations"][0],
-                    gaussians.harmonics[0],
-                    gaussians.opacities[0],
-                    Path(os.path.join(out_scene_dir, f"{file_id}.ply")),
-                )
+            
+                   
             if args.render_video is True:
                 sum_coarse_psnr += coarse_psnr
                 running_mean_coarse_psnr = sum_coarse_psnr / (i + 1)
@@ -331,11 +323,29 @@ def eval(cfg_dict: DictConfig):
                 if i>2:      
                     video_rgb_pred.append(coarse_pred_rgb)
                     video_depth_pred.append(depth)
+                    continue
                 # v,_,_,_ = depth.shape
                 # for i in range(v): 
                 #     video_depth_pred.append(depth[i])
                 # imageio.mimwrite(os.path.join(out_scene_dir, 'video_depth_pred_interplate.mp4'), video_depth_pred, fps=10, quality=8)
-                
+            if file_id == '040_0' or file_id == '160_0' or i == 1:
+                export_ply(
+                    batch["context"]["extrinsics"][0, 0],
+                    gaussians.means[0],
+                    visualization_dump["scales"][0],
+                    visualization_dump["rotations"][0],
+                    gaussians.harmonics[0],
+                    gaussians.opacities[0],
+                    Path(os.path.join(out_scene_dir, f"{file_id}.ply")),
+                )
+                depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
+                colorize_depths = []
+                for depth in depths:
+                    depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
+                    colorize_depths.append(depth)
+                colorize_depths = torch.cat(colorize_depths, dim=1)
+                save_image(colorize_depths.permute(2,0,1), os.path.join(out_scene_dir, '{}_colorize_depths.png'.format(file_id)))
+          
             # saving outputs ...
             imageio.imwrite(os.path.join(out_scene_dir, '{}_average.png'.format(file_id)),averaged_img)
 

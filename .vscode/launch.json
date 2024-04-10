@@ -30,7 +30,7 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "4",
+                "CUDA_VISIBLE_DEVICES": "2",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "test:pf_mvsplat_019",
@@ -41,15 +41,15 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/eval",
-                "+ckpt_path=data/ibrnet/train/out/ft_mvsplat_019_wo_depth_view_2/model/model_003000.pth", 
+                "+ckpt_path=data/ibrnet/train/out/ft_mvsplat_019_depth_view_4_fix_bug/model/model_003000.pth", 
                 "++train_dataset=waymo",
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
-                "++num_source_views=2",
-                "++render_video=False",
+                "++num_source_views=4",
+                "++render_video=True",
                 "++use_pred_pose=False",
-                "++expname=ft_mvsplat_019_wo_depth_view_2"
+                "++expname=ft_mvsplat_019_depth_view_4_fix_bug"
             ]
         },
         {
@@ -65,15 +65,15 @@
             "justMyCode": false,
             "args": [
                 "++rootdir=data/ibrnet/eval",
-                "+ckpt_path=data/ibrnet/train/out/ft_mvsplat_room_view_4/model/model_002000.pth", 
+                "+ckpt_path=data/ibrnet/train/out/generalized_mvspla_view_4/model/model_008000.pth", 
                 "++train_dataset=llff_test",
                 "++train_scenes=['room']",
                 "++eval_dataset=llff_test",
-                "++eval_scenes=['trex']",
+                "++eval_scenes=['fern']",
                 "++num_source_views=4",
                 "++render_video=False",
                 "++use_pred_pose=False",
-                "++expname=ft_mvsplat_trex_view_4"
+                "++expname=generalized_mvspla_view_4"
             ]
         },
         {
@@ -102,7 +102,7 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "3",
+                "CUDA_VISIBLE_DEVICES": "5",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "generalized:mvsplat-llff",
@@ -122,13 +122,12 @@
                 "++use_pred_pose=False",
                 "++use_aux_loss=False",
                 "++n_iters=10000",
-                "++expname=debug"
-                // "++expname=generalized_mvspla_view_4"
+                "++expname=generalized_mvspla_view_4"
             ]
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "2",
+                "CUDA_VISIBLE_DEVICES": "7",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "finetune:mvsplat-019",
@@ -147,8 +146,8 @@
                 "++render_video=False",
                 "++use_aux_loss=False",
                 "++use_kl_depth_loss=False",
-                "++num_source_views=2",
-                "++expname=ft_mvsplat_019_wo_depth_view_2"
+                "++num_source_views=4",
+                "++expname=debug"
             ]
         },
         {
@@ -227,6 +226,56 @@
                 "++render_video=False",
                 "++num_source_views=4",
                 "++expname=generalized_mvsplat_waymo_depth_low_cof"
+            ]
+        },
+        {
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "3",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "name": "finetune:mvsplat-robotaxi",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/train_mvsplat.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "++rootdir=data/ibrnet/train",
+                "+ckpt_path=model_zoo/pf_mvsplat.pth", 
+                "++train_dataset=robotaxi",
+                "++train_scenes=['002']",
+                "++eval_dataset=robotaxi",
+                "++eval_scenes=['002']",
+                "++render_video=False",
+                "++use_aux_loss=False",
+                "++use_kl_depth_loss=False",
+                "++num_source_views=2",
+                "++expname=debug"
+            ]
+        },
+        {
+            "env": {
+                "CUDA_VISIBLE_DEVICES": "4",
+                "PYTHONPATH": "${workspaceFolder}"
+            },
+            "name": "test:mvsplat-robotaxi",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/eval/eval_pf_mvsplat.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "++rootdir=data/ibrnet/eval",
+                "+ckpt_path=data/ibrnet/train/out/debug/model/model_003000.pth", 
+                "++train_dataset=robotaxi",
+                "++train_scenes=['001']",
+                "++eval_dataset=robotaxi",
+                "++eval_scenes=['001']",
+                "++render_video=False",
+                "++use_aux_loss=False",
+                "++use_kl_depth_loss=False",
+                "++num_source_views=4",
+                "++expname=test_haidian"
             ]
         },
         {

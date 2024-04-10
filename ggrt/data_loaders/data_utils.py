@@ -127,7 +127,7 @@ def random_crop(rgb, camera, src_rgbs, src_cameras, size=(400, 600), center=None
     src_cameras[:, 1] = out_w
     return rgb_out, camera, src_rgbs, src_cameras, camera[2:18].reshape(4, 4)[..., :3, :3], src_cameras[:, 2:18].reshape(-1, 4, 4)[..., :3, :3],center_h,center_w
 
-def loader_resize(rgb, camera, src_rgbs, src_cameras, size=(400, 600)):
+def loader_resize(rgb, camera, src_rgbs, src_cameras, size=(400, 600), int_resize = False):
     h, w = rgb.shape[:2]
     out_h, out_w = size[0], size[1]
     intrinsics = camera[2:18].reshape(4, 4)
@@ -137,10 +137,15 @@ def loader_resize(rgb, camera, src_rgbs, src_cameras, size=(400, 600)):
 
     ratio_y = out_h / h
     ratio_x = out_w / w
-    # intrinsics[:1, :1] *= ratio_y
-    # src_intrinsics[:, :1, :1] *= ratio_y
-    # intrinsics[1:2, 1:2] *= ratio_x
-    # src_intrinsics[:, 1:2, 1:2] *= ratio_x
+    if int_resize is True:
+        intrinsics[:1, :1] *= ratio_x
+        intrinsics[:1, 2:3] *= ratio_x
+        src_intrinsics[:, :1, :1] *= ratio_x
+        src_intrinsics[:, :1, 2:3] *= ratio_x
+        intrinsics[1:2, 1:2] *= ratio_y
+        intrinsics[1:2, 2:3] *= ratio_y
+        src_intrinsics[:, 1:2, 1:2] *= ratio_y
+        src_intrinsics[:, 1:2, 2:3] *= ratio_y
     camera[0] = out_h
     camera[1] = out_w
     camera[2:18] = intrinsics.flatten()
