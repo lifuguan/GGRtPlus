@@ -127,11 +127,14 @@ class GGRtPlusTrainer(BaseTrainer):
         # self.state = self.model.switch_state_machine(state='joint')
         # self.state = 'joint'
         # self.state = 'joint'
-        if self.iteration % 500 == 0 and (self.iteration // 200) % 2 == 0:
-            self.state = 'pose_only'
-        elif self.iteration % 500 == 0 and (self.iteration // 200) % 2 == 1:
-            self.state = 'nerf_only'
-        min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
+        # if self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 0:
+        #     self.state = 'pose_only'
+        # elif self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 1:
+        #     self.state = 'nerf_only'
+        # min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
+
+        self.state = 'joint'
+
         # Start of core optimization loop
         # pred_inv_depths, pred_rel_poses, sfm_loss, fmap = self.model.correct_poses(
         #     fmaps=None,

@@ -8,7 +8,7 @@ expname : test
 rootdir : data/ibrnet/train
 distributed : False
 enable_tensorboard : True
-enable_visdom : True
+enable_visdom : False
 seed : 3407
 pretrained : False
 local_rank : 0

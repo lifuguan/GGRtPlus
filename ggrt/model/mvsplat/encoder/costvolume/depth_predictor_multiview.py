@@ -570,4 +570,4 @@ class DepthPredictorMultiView(nn.Module):
                     srf=1,
                 )
 
-        return depths, densities, raw_gaussians,extrinsics_pred,torch.cat(pose_predictions_list,dim=0) ,depth_list
+        return depths, densities, raw_gaussians,extrinsics_pred,torch.cat(pose_predictions_list,dim=0).permute(1,0,2) ,depth_list

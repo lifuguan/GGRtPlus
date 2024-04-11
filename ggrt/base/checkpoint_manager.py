@@ -148,7 +148,7 @@ class CheckPointManager(object):
             state = torch.load(checkpoint_name, map_location='cuda:0')
 
         step = 0
-        if True:
+        if False:
             if 'step' in state:
                 step = state['step']
 
