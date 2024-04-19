@@ -27,7 +27,8 @@ from ..pose_util import PoseInitializer
 from .geometryutils import relative_transformation
 import random
 from .base_utils import downsample_gaussian_blur
-
+import PIL.Image
+from PIL.ImageOps import exif_transpose
 
 
 def loader_resize(rgb, camera, src_rgbs, src_cameras, depth = None, src_depths = None, size=(400, 600)):
@@ -88,11 +89,13 @@ class WaymoStaticDataset(Dataset):
         self.train_view_graphs = []
 
         if mode == 'train':
-            self.image_size = (224, 320)
+            # self.image_size = (224, 320)
+            # self.image_size = (512,336)
+            self.image_size = (336,512)
             # self.image_size = (176, 240)
         else:
             # self.image_size = (640,960)        
-            self.image_size = (504,760)    
+            self.image_size = (512,336)    
             # self.image_size = (224, 320)
         all_scenes = os.listdir(self.folder_path)
     
@@ -273,7 +276,7 @@ class WaymoStaticDataset(Dataset):
         rgb = imageio.imread(rgb_file).astype(np.float32) / 255.
         depth = imageio.imread(depth_file).astype(np.float32)
         render_pose = self.render_poses[idx]
-                
+        # img_dust_target = exif_transpose(PIL.Image.open(rgb_file)).convert('RGB')        
         # translation = np.array([3, 0, 0])
         # render_pose[:, 3] += np.dot(render_pose[:, :3], translation)
         
@@ -321,7 +324,7 @@ class WaymoStaticDataset(Dataset):
         if self.mode == 'eval_pose' and self.nearby_view_id is not None:
             nearest_pose_ids = np.array([self.nearby_view_id])
 
-        nearest_pose_ids = np.random.choice(nearest_pose_ids, min(num_select, len(nearest_pose_ids)), replace=False)
+        # nearest_pose_ids = np.random.choice(nearest_pose_ids, min(num_select, len(nearest_pose_ids)), replace=False)
         # print(f'nearest pose ids: {nearest_pose_ids}'
         #         f'id_render: {id_render}')
 
@@ -337,9 +340,13 @@ class WaymoStaticDataset(Dataset):
         src_rgbs, src_depths = [], []
         src_cameras = []
         src_intrinsics, src_extrinsics = [], []
+        pil_path = []
         for id in nearest_pose_ids:
             src_rgb = imageio.imread(train_rgb_files[id]).astype(np.float32) / 255.
             src_depth = imageio.imread(train_depth_files[id]).astype(np.float32)
+            pil_path.append(train_rgb_files[id])
+            # img_dust_context = exif_transpose(PIL.Image.open(train_rgb_files[id])).convert('RGB')
+
             src_name.append(id)
             train_pose = train_poses[id]
             train_intrinsics_ = train_intrinsics[id]
@@ -352,7 +359,7 @@ class WaymoStaticDataset(Dataset):
             src_camera = np.concatenate((list(self.image_size), train_intrinsics_.flatten(),
                                          train_pose.flatten())).astype(np.float32)
             src_cameras.append(src_camera)
-
+            # src_dust_imgs.append(img_dust_context)
         src_rgbs = np.stack(src_rgbs, axis=0)
         src_cameras = np.stack(src_cameras, axis=0)
 
@@ -402,6 +409,7 @@ class WaymoStaticDataset(Dataset):
                         "near":  depth_range[0].repeat(num_select) / scale,
                         "far": depth_range[1].repeat(num_select) / scale,
                         "index": torch.tensor([int(i) for i in src_name]),
+                        "dust_img": pil_path
                 },
                 "target": {
                         "extrinsics": pix_extrinsics,

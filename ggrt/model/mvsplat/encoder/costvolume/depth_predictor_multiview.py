@@ -505,8 +505,6 @@ class DepthPredictorMultiView(nn.Module):
 
             #得到depth后计算 pose cost
 
-
-
             # depth refinement
             proj_feat_in_fullres = self.upsampler(torch.cat((feat01, cnn_features), dim=1))
             proj_feature = self.proj_feature(proj_feat_in_fullres)

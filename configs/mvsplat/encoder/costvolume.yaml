@@ -12,6 +12,7 @@ gaussian_adapter:
   gaussian_scale_min: 0.5
   gaussian_scale_max: 15.0
   sh_degree: 4
+  
 
 d_feature: 128
 

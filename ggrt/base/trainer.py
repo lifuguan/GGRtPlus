@@ -181,6 +181,7 @@ class BaseTrainer(object):
 
         iter_start = self.load_checkpoint(load_optimizer=not self.config.no_load_opt,
                                           load_scheduler=not self.config.no_load_scheduler)
+        # iter_start = 1
         # if iter_start == 0:
         #     iter_start = int(self.config.ckpt_path[-10:-4])
         

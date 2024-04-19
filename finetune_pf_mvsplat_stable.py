@@ -127,9 +127,9 @@ class GGRtPlusTrainer(BaseTrainer):
         # self.state = self.model.switch_state_machine(state='joint')
         # self.state = 'joint'
         # self.state = 'joint'
-        # if self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 0:
+        # if self.iteration % 200 == 0 and (self.iteration // 200) % 2 == 0:
         #     self.state = 'pose_only'
-        # elif self.iteration % 500 == 0 and (self.iteration // 500) % 2 == 1:
+        # elif self.iteration % 200 == 0 and (self.iteration // 200) % 2 == 1:
         #     self.state = 'nerf_only'
         # min_depth, max_depth = batch['depth_range'][0][0], batch['depth_range'][0][1]
 
@@ -156,7 +156,6 @@ class GGRtPlusTrainer(BaseTrainer):
         #     target_pose = batch['camera'][0,-16:].reshape(-1, 4, 4).repeat(num_views, 1, 1).to(self.device)
         #     context_poses = self.projector.get_train_poses(target_pose, pred_rel_poses[:, -1, :])
         #     batch['context']['extrinsics'] = context_poses.unsqueeze(0).detach()
-        
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
         ret, data_gt,_,_ = self.model.gaussian_model(batch, self.iteration)

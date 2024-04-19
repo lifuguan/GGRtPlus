@@ -4,9 +4,11 @@ from .encoder import Encoder
 from .encoder_costvolume import EncoderCostVolume, EncoderCostVolumeCfg
 from .visualization.encoder_visualizer import EncoderVisualizer
 from .visualization.encoder_visualizer_costvolume import EncoderVisualizerCostVolume
+from .feature2gs import encoderdust2gs
 
 ENCODERS = {
     "costvolume": (EncoderCostVolume, EncoderVisualizerCostVolume),
+    "dust_gs":(encoderdust2gs, EncoderVisualizerCostVolume)
 }
 
 EncoderCfg = EncoderCostVolumeCfg

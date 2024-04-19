@@ -122,5 +122,15 @@ def config_parser():
      parser.add_argument("--visdom_server", type=str, default="localhost")
      parser.add_argument("--visdom_port", type=int, default=9000)
      parser.add_argument("--render_video",type=bool, default=False)
+     parser.add_argument("--image_size", type=int, default=512, choices=[512, 224], help="image size")
+     parser.add_argument("--server_port", type=int, help=("will start gradio app on this port (if available). "
+                                                            "If None, will search for an available port starting at 7860."),
+                         default=None)
+          
+     parser.add_argument("--weights", type=str, required=True, help="path to the model weights")
+     parser.add_argument("--device", type=str, default='cuda', help="pytorch device")
+     parser.add_argument("--tmp_dir", type=str, default=None, help="value for tempfile.tempdir")
+     parser.add_argument("--silent", action='store_true', default=False,
+                         help="silence logs")
 
      return parser

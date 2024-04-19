@@ -148,7 +148,7 @@ class CheckPointManager(object):
             state = torch.load(checkpoint_name, map_location='cuda:0')
 
         step = 0
-        if False:
+        if True:
             if 'step' in state:
                 step = state['step']
 
@@ -167,4 +167,5 @@ class CheckPointManager(object):
                     schedulers[scheduler_name].load_state_dict(state[scheduler_name])
 
             print(f'[INFO] Loaded models from {checkpoint_name}')
+        step = 0
         return step
