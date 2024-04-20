@@ -6,7 +6,7 @@ from einops import rearrange
 from jaxtyping import Float
 from torch import Tensor, nn
 from collections import OrderedDict
-
+from .costvolume.ldm_unet.unet import UNetModel
 from ....dataset.shims.bounds_shim import apply_bounds_shim
 from ....dataset.shims.patch_shim import apply_patch_shim
 from ....dataset.types import BatchedExample, DataShim
@@ -79,10 +79,10 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
     def __init__(self, cfg: EncoderCostVolumeCfg) -> None:
         super().__init__(cfg)
         # gaussians convertor
-        proj_in_channels = 256   #dust feature-dim
+        proj_in_channels = 512  #dust feature-dim
         upsample_out_channels = 128
 
-        self.upsampler = nn.Sequential(
+        self.upsampler1 = nn.Sequential(
             nn.Conv2d(proj_in_channels, upsample_out_channels, 3, 1, 1),
             nn.Upsample(
                 scale_factor=2,
@@ -91,18 +91,64 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
             ),
             nn.GELU(),
         )
+        self.upsampler2 = nn.Sequential(
+            nn.Conv2d(1024, 256, 3, 1, 1),
+            nn.Upsample(
+                scale_factor=8,
+                mode="bilinear",
+                align_corners=True,
+            ),
+            nn.GELU(),
+        )
 
         self.gaussian_adapter = GaussianAdapter(cfg.gaussian_adapter)
-        self.to_gaussians = nn.Sequential(
-            nn.ReLU(),
-            nn.Linear(
-                cfg.d_feature,
-                cfg.num_surfaces * (2 + self.gaussian_adapter.d_in),
-            ),
+        # self.to_gaussians = nn.Sequential(
+        #     nn.ReLU(),
+        #     nn.Linear(
+        #         cfg.d_feature,
+        #         cfg.num_surfaces * (2 + self.gaussian_adapter.d_in),
+        #     ),
+        # )
+        depth_unet_feat_dim = cfg.depth_unet_feat_dim
+        input_channels = 3 + depth_unet_feat_dim + 1 + 1
+        channels = 32
+        depth_unet_channel_mult=cfg.depth_unet_channel_mult
+        depth_unet_attn_res=cfg.depth_unet_attn_res,
+        self.refine_unet = nn.Sequential(
+                nn.Conv2d(input_channels, channels, 3, 1, 1),
+                nn.GroupNorm(4, channels),
+                nn.GELU(),
+                UNetModel(
+                    image_size=None,
+                    in_channels=channels,
+                    model_channels=channels,
+                    out_channels=channels,
+                    num_res_blocks=1, 
+                    attention_resolutions=depth_unet_attn_res,
+                    channel_mult=depth_unet_channel_mult,
+                    num_head_channels=32,
+                    dims=2,
+                    postnorm=True,
+                    num_frames=2,
+                    use_cross_view_self_attn=True,
+                ),
+            )
+        self.proj_feature = nn.Conv2d(
+            upsample_out_channels, 32, 3, 1, 1
         )
-        self.high_resolution_skip = nn.Sequential(
-            nn.Conv2d(3, cfg.d_feature, 7, 1, 3),
-            nn.ReLU(),
+        # self.high_resolution_skip = nn.Sequential(
+        #     nn.Conv2d(3, cfg.d_feature, 7, 1, 3),
+        #     nn.ReLU(),
+        # )
+        feature_channels = 128
+        gau_in = depth_unet_feat_dim + 3 + feature_channels
+        gaussian_raw_channels = 84
+        self.to_gaussians = nn.Sequential(
+            nn.Conv2d(gau_in, gaussian_raw_channels * 2, 3, 1, 1),
+            nn.GELU(),
+            nn.Conv2d(
+                gaussian_raw_channels * 2, gaussian_raw_channels, 3, 1, 1
+            ),
         )
 
     def map_pdf_to_opacity(
@@ -124,6 +170,7 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
         self,
         context: dict,
         features,
+        cnns,
         poses_rel,
         depths,
         densities,
@@ -140,24 +187,36 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
         xy_ray, _ = sample_image_grid((h, w), device)
         xy_ray = rearrange(xy_ray, "h w xy -> (h w) () xy")
         features = rearrange(features, "b v d_feature h w -> (b v) d_feature h w ")
-        features = self.upsampler(features)     #卷积降dim维度  插值h w
-        skip = rearrange(context["image"], "b v c h w -> (b v) c h w")
-        skip = self.high_resolution_skip(skip)
-        features = features + skip
+        cnns = rearrange(cnns, "b v d_feature h w -> (b v) d_feature h w ")
+        cnns = self.upsampler2(cnns)
+        features = self.upsampler1(torch.cat((features,cnns),dim=1))     #卷积降dim维度  插值h w
+        # skip = rearrange(context["image"], "b v c h w -> (b v) c h w")
+        # skip = self.high_resolution_skip(skip)
+        # features = features + skip
+        proj_feature = self.proj_feature(features)
 
+        # depths = rearrange(depths.unsqueeze(-1), "b v h w l -> (b v) l h w")
+        context["image"] = rearrange(context["image"], "b v c h w -> (b v) c h w")
+        refine_out = self.refine_unet(torch.cat([context["image"],proj_feature,rearrange(depths.unsqueeze(-1), "b v h w l -> (b v) l h w"),rearrange(densities.unsqueeze(-1), "b v h w l -> (b v) l h w")],dim=1))
+        raw_gaussians_in = [refine_out, context["image"],features]
+        raw_gaussians_in = torch.cat(raw_gaussians_in,dim=1)
+        raw_gaussians = self.to_gaussians(raw_gaussians_in)
+        raw_gaussians = rearrange(
+                raw_gaussians, "(v b) c h w -> b v (h w) c", v=v, b=b
+            )
+        
         features = rearrange(features, "(b v) d_feature h w -> b v (h w) d_feature",b=b,v=v)
-        gaussians = rearrange(
-            self.to_gaussians(features),
-            "... (srf c) -> ... srf c",
-            srf=self.cfg.num_surfaces,
-        )
         depths = rearrange(depths.unsqueeze(-1).unsqueeze(-1), "b v h w k l -> b v (h w) k l")
         # depths = relative_disparity_to_depth(
         #     rearrange(depths.unsqueeze(-1).unsqueeze(-1), "b v h w k l -> b v (h w) k l"),
         #     rearrange(context["near"], "b v -> b v () () ()"),
         #     rearrange(context["far"], "b v -> b v () () ()"),
         # )
-
+        gaussians = rearrange(
+            raw_gaussians,
+            "... (srf c) -> ... srf c",
+            srf=self.cfg.num_surfaces,
+        )
 
         offset_xy = gaussians[..., :2].sigmoid()
         pixel_size = 1 / torch.tensor((w, h), dtype=torch.float32, device=device)
@@ -177,7 +236,7 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
             ),
             (h, w),
         )
-
+        
         # Dump visualizations if needed.
         if visualization_dump is not None:
             visualization_dump["depth"] = rearrange(

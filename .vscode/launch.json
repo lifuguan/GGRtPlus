@@ -79,7 +79,7 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "7",
+                "CUDA_VISIBLE_DEVICES": "0",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "dust_train",
@@ -89,15 +89,15 @@
             "console": "integratedTerminal",
             "args": ["+weights=model_zoo/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth",
             "++rootdir=data/ibrnet/train",
-            "+ckpt_path=data/ibrnet/train/out/debug/model/model_000000.pth",
+            "+ckpt_path=data/ibrnet/train/out/train_2_mvsplat_refine/model/model_004000.pth",
             "++train_dataset=waymo",
             "++train_scenes=[019]",
             "++eval_dataset=waymo",
             "++eval_scenes=[019]",
-            "++num_source_views=4",
+            "++num_source_views=3",
             "++use_pred_pose=False",
             "++render_video=False", 
-            "++expname=train_dust3r_with_skip" ]  
+            "++expname=debug" ]  
         
         },
 
@@ -119,7 +119,7 @@
                 "++train_scenes=[019]",
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
-                "++num_source_views=4",
+                "++num_source_views=3",
                 "++render_video=False",
                 "++use_pred_pose=False",
                 "++expname=ft_mvsplat_019_iponet_4_pofr"

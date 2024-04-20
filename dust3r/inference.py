@@ -61,14 +61,14 @@ def loss_of_one_batch(batch, model, criterion, device, symmetrize_batch=False, u
         view1, view2 = make_batch_symmetric(batch)
 
     with torch.cuda.amp.autocast(enabled=bool(use_amp)):
-        pred1, pred2 ,dec1, dec2 , path_1 ,path_2= model(view1, view2)
+        pred1, pred2 ,feat1, feat2 , path_1 ,path_2= model(view1, view2)
 
         # loss is supposed to be symmetric
         with torch.cuda.amp.autocast(enabled=False):
             loss = criterion(view1, view2, pred1, pred2) if criterion is not None else None
 
     result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
-    return result[ret] if ret else result,dec1,dec2,path_1 ,path_2
+    return result[ret] if ret else result,feat1,feat2,path_1 ,path_2
 
 
 @torch.no_grad()
@@ -84,11 +84,13 @@ def inference(pairs, model, device, batch_size=8, verbose=True):
     # batch_size = len(pairs)
     feat1_list = []
     feat2_list = []
+    cnn1_list = []
+    cnn2_list = []
     for i in tqdm.trange(0, len(pairs), batch_size, disable=not verbose):
         view1_ft_lst = []
         view2_ft_lst = []
         # start = time.time()
-        res ,dec1 ,dec2,path_1 ,path_2= loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
+        res ,cnn1 ,cnn2,path_1 ,path_2= loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
         # end =time.time()
         # print(end-start)
         result.append(to_cpu(res))
@@ -96,10 +98,12 @@ def inference(pairs, model, device, batch_size=8, verbose=True):
         feat2 = path_2
         feat1_list.append(feat1)
         feat2_list.append(feat2)
+        cnn1_list.append(cnn1)
+        cnn2_list.append(cnn2)
         # pfeat01.append(dec2[0])
     result = collate_with_cat(result, lists=multiple_shapes)
 
-    return result,feat1_list,feat2_list
+    return result,feat1_list,feat2_list,cnn1_list,cnn2_list
 
 
 def check_if_same_size(pairs):

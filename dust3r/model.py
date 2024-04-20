@@ -163,4 +163,4 @@ class AsymmetricCroCo3DStereo (CroCoNet):
             res2,path_2= self._downstream_head(2, [tok.float() for tok in dec2], shape2)
 
         res2['pts3d_in_other_view'] = res2.pop('pts3d')  # predict view2's pts3d in view1's frame
-        return res1, res2,dec1,dec2, path_1,path_2
+        return res1, res2,feat1,feat2, path_1,path_2

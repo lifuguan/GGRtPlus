@@ -146,7 +146,7 @@ class dust2gsTrainer(BaseTrainer):
             # rgb_path = batch['rgb_path'][0]
             imgs = resize_dust(batch["context"]["dust_img"],size=512)   #将image resize成512
             pairs = make_pairs(imgs, scene_graph='complete', prefilter=None, symmetrize=True)
-            output,feat1,feat2 = inference(pairs, model, device, batch_size=batch_size, verbose=not silent)
+            output,feat1,feat2,cnn1,cnn2 = inference(pairs, model, device, batch_size=batch_size, verbose=not silent)
             mode = GlobalAlignerMode.PointCloudOptimizer if len(imgs) > 2 else GlobalAlignerMode.PairViewer
             scene = global_aligner(output, device=device, mode=mode, verbose=not silent)
             schedule = 'linear'
@@ -185,11 +185,14 @@ class dust2gsTrainer(BaseTrainer):
             intrinsics_list = [] 
             near_list = []
             far_list = []
+            cnn_list = []
             context_list = []
             poses_rel = poses_rel.cuda()
             # poses_rel = align_ate_c2b_use_a2b(poses_rel, batch['context']["extrinsics"][0])
             for i in range(len(imgs)-2):            #不添加最后一个target_view  将最后一个ref当成target_view
                 features=torch.cat([feat1[i],feat2[i]],dim=0)
+                cnns = torch.cat([cnn1[i],cnn2[i]],dim=0)
+                cnn_list.append(cnns.unsqueeze(0))
                 feature_list.append(features.unsqueeze(0))   # b,v,h*w,dim
                 confs_list.append(confs[:,i:i+2,:,:])   #b,v,h,w #v=2
                 depths_list.append(depths[i:i+2].unsqueeze(0))
@@ -205,10 +208,11 @@ class dust2gsTrainer(BaseTrainer):
             poses_2_rel = torch.cat(pose_list,dim=0)
             cmap = torch.cat(confs_list,dim=0).cuda()     #两种尝试 一种求平均 第二种等效pixelsplat，在1view下的1点云的置信度，在2view下的2点云的置信度
             features = torch.cat(feature_list,dim=0)
+            cnns = torch.cat(cnn_list,dim=0)
             depths = torch.cat(depths_list,dim=0)
             _,_,_,H,W = batch["context"]['image'].shape
-            # features = features.permute(0, 1, 3, 2)
-            # features = rearrange(features, "b v d (h w) -> b v d h w",h=H//16,w=W//16)
+            cnns = cnns.permute(0, 1, 3, 2)
+            cnns = rearrange(cnns, "b v d (h w) -> b v d h w",h=H//16,w=W//16)
             batch['target']["extrinsics"] = poses_rel[-2:-1].unsqueeze(0)
             batch['target']["image"] = batch['context']["image"][:,-2:-1,:,:,:]
             # for j,depth in enumerate(depths):
@@ -219,7 +223,7 @@ class dust2gsTrainer(BaseTrainer):
             pose_error = evaluate_camera_alignment(poses_rel, batch['context']["extrinsics"][0])
             R_errors = pose_error['R_error_mean']
             t_errors = pose_error['t_error_mean']    
-        ret, data_gt,_,_ = self.model.gaussian_model(batch,features,poses_2_rel,depths,cmap.float(),self.iteration)
+        ret, data_gt,_,_ = self.model.gaussian_model(batch,features,cnns,poses_2_rel,depths,cmap.float(),self.iteration)
         sfm_loss = 0
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)

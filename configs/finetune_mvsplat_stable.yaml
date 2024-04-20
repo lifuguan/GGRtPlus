@@ -1,7 +1,7 @@
 ### Model Config
 defaults:
-  - mvsplat/encoder: dust_gs 
-  # dust_gs
+  - mvsplat/encoder: dust_gs
+  # dust_gs  costvolume
   - mvsplat/decoder: splatting_cuda
 
 ### INPUT
