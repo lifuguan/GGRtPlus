@@ -57,8 +57,6 @@ from ggrt.model.dust_gs import dust_gs
 from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
 import matplotlib.pyplot as pl
 from scipy.spatial.transform import Rotation
-import trimesh
-from dust3r.viz import add_scene_cam, CAM_COLORS, OPENGL, pts3d_to_trimesh, cat_meshes
 import wandb 
 
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
@@ -140,109 +138,68 @@ class dust2gsTrainer(BaseTrainer):
         silent=self.config.silent
         model = load_model(self.config.weights, self.config.device, verbose=not self.config.silent)
 
-        batch_size = 1
         with torch.no_grad():
 
             # rgb_path = batch['rgb_path'][0]
             imgs = resize_dust(batch["context"]["dust_img"],size=512)   #将image resize成512
             pairs = make_pairs(imgs, scene_graph='complete', prefilter=None, symmetrize=True)
-            output,feat1,feat2,cnn1,cnn2 = inference(pairs, model, device, batch_size=batch_size, verbose=not silent)
+            output, feat1, feat2, cnn1, cnn2 = inference(pairs, model, device, batch_size=1, verbose=not silent)
             mode = GlobalAlignerMode.PointCloudOptimizer if len(imgs) > 2 else GlobalAlignerMode.PairViewer
             scene = global_aligner(output, device=device, mode=mode, verbose=not silent)
-            schedule = 'linear'
             lr = 0.01
             if mode == GlobalAlignerMode.PointCloudOptimizer:
-                loss = scene.compute_global_alignment(init='mst', niter=0, schedule=schedule, lr=lr)
-            # outfile = get_3D_model_from_scene(outdir, silent, scene, min_conf_thr, as_pointcloud, mask_sky,
-                                        #   clean_depth, transparent_cams, cam_size)
+                loss = scene.compute_global_alignment(init='mst', niter=0, schedule='linear', lr=lr)
 
-            # if mode == GlobalAlignerMode.PointCloudOptimizer:
-            #     loss = scene.compute_global_alignment(init='mst', niter=0, schedule=schedule, lr=lr)
-            rgbimg = scene.imgs
             depths = scene.get_depthmaps()
-
-            poses = scene.get_im_poses()
-            poses = poses.detach().cpu()
-            # poses_rel=relative_transformation(
-            #     poses[0].unsqueeze(0).repeat(poses.shape[0], 1, 1),
-            #     poses,
-            #     orthogonal_rotations=False,
-            # )
-            poses_rel = poses
-            #scene.im_poses 四个pose
             confs = [to_numpy(c) for c in scene.im_conf]    #在每个视角下 点云的置信度
-            cmap = pl.get_cmap('jet')
-            depths_max = max([d.max() for d in depths])
-            depths = [d.unsqueeze(0) for d in depths]
-            confs_max = max([d.max() for d in confs])
-            confs = [torch.from_numpy(cmap(d/confs_max)).permute(2, 0, 1).unsqueeze(0) for d in confs]
-            confs = torch.mean(torch.stack(confs), dim=0)
-            depths = torch.cat(depths, dim=0)
-            feature_list = []
-            depths_list = []
-            confs_list = []
-            pose_list = []
-            intrinsics_list = [] 
-            near_list = []
-            far_list = []
-            cnn_list = []
-            context_list = []
-            poses_rel = poses_rel.cuda()
-            # poses_rel = align_ate_c2b_use_a2b(poses_rel, batch['context']["extrinsics"][0])
-            for i in range(len(imgs)-2):            #不添加最后一个target_view  将最后一个ref当成target_view
-                features=torch.cat([feat1[i],feat2[i]],dim=0)
-                cnns = torch.cat([cnn1[i],cnn2[i]],dim=0)
-                cnn_list.append(cnns.unsqueeze(0))
-                feature_list.append(features.unsqueeze(0))   # b,v,h*w,dim
-                confs_list.append(confs[:,i:i+2,:,:])   #b,v,h,w #v=2
-                depths_list.append(depths[i:i+2].unsqueeze(0))
-                pose_list.append(poses_rel[i:i+2].unsqueeze(0))
-                intrinsics_list.append(batch['context']["intrinsics"][:,i:i+2,:,:])
-                near_list.append(batch['context']["near"][:,i:i+2])
-                far_list.append(batch['context']["far"][:,i:i+2])
-                context_list.append(batch['context']["image"][:,i:i+2,:,:,:])
-            batch['context']["image"] = torch.cat(context_list,dim=0)
-            batch['context']["near"] = torch.cat(near_list,dim=0)
-            batch['context']["far"]  = torch.cat(far_list,dim=0)
-            batch['context']["intrinsics"] = torch.cat(intrinsics_list,dim=0)
-            poses_2_rel = torch.cat(pose_list,dim=0)
-            cmap = torch.cat(confs_list,dim=0).cuda()     #两种尝试 一种求平均 第二种等效pixelsplat，在1view下的1点云的置信度，在2view下的2点云的置信度
-            features = torch.cat(feature_list,dim=0)
-            cnns = torch.cat(cnn_list,dim=0)
-            depths = torch.cat(depths_list,dim=0)
+            poses_rel = scene.get_im_poses().detach()
+
+            # 使用生成器表达式减少内存使用
+            confs_max = max(c.max() for c in confs)
+            depths = torch.stack([d.unsqueeze(0) for d in depths], dim=0)
+            confs = torch.stack([torch.from_numpy(pl.get_cmap('jet')(d/confs_max)).permute(2, 0, 1).unsqueeze(0) for d in confs], dim=0)
+
+            # 批量操作
+            confs = confs.mean(dim=0)
+            depths = depths.view(-1, *depths.shape[2:])
+
+            # 重构循环，减少重复代码
+            def append_to_batch_lists(item, list_name, start, end):
+                if list_name not in batch.keys():
+                    batch[list_name] = item[start:end].unsqueeze(0)
+                else:
+                    batch[list_name].append(item[start:end].unsqueeze(0))
+
+            # 使用函数减少重复代码
+            num_imgs = len(imgs) - 2
+            for i in range(num_imgs):
+                append_to_batch_lists(torch.cat([cnn1[i], cnn2[i]], dim=0), 'cnn', i, i+2)
+                append_to_batch_lists(torch.cat([feat1[i], feat2[i]], dim=0), 'features', i, i+2)
+                append_to_batch_lists(confs[:,i:i+2,:,:], 'confs', i, i+2)
+                append_to_batch_lists(depths[i:i+2], 'depths', i, i+2)
+                append_to_batch_lists(poses_rel[i:i+2], 'pose', i, i+2)
+
+            batch['context'].update({
+                "image": torch.cat([batch['context']["image"][:, i:i+2] for i in range(num_imgs)], dim=0),
+                "near": torch.cat([batch['context']["near"][:, i:i+2] for i in range(num_imgs)], dim=0),
+                "far": torch.cat([batch['context']["far"][:, i:i+2] for i in range(num_imgs)], dim=0),
+                "intrinsics": torch.cat([batch['context']["intrinsics"][:, i:i+2] for i in range(num_imgs)], dim=0),
+            })
             _,_,_,H,W = batch["context"]['image'].shape
-            cnns = cnns.permute(0, 1, 3, 2)
-            cnns = rearrange(cnns, "b v d (h w) -> b v d h w",h=H//16,w=W//16)
+            batch['cnn'] = batch['cnn'].permute(0, 1, 3, 2)
+            batch['cnn'] = rearrange(batch['cnn'], "b v d (h w) -> b v d h w",h=H//16,w=W//16)
             batch['target']["extrinsics"] = poses_rel[-2:-1].unsqueeze(0)
             batch['target']["image"] = batch['context']["image"][:,-2:-1,:,:,:]
-            # for j,depth in enumerate(depths):
-            #     depth = depth.detach()
-            #     depth = colorize(depth[0], cmap_name='jet', append_cbar=True)
-            #     imageio.imwrite( f'{4*i+j}_dgassin_color_depth.png',
-            #                     (depth.cpu().numpy() * 255.).astype(np.uint8))
+
             pose_error = evaluate_camera_alignment(poses_rel, batch['context']["extrinsics"][0])
             R_errors = pose_error['R_error_mean']
             t_errors = pose_error['t_error_mean']    
-        ret, data_gt,visualization_dump,_ = self.model.gaussian_model(batch,features,cnns,poses_2_rel,depths,cmap.float(),self.iteration)
+        ret, data_gt, _, _ = self.model.gaussian_model(batch, batch['features'], batch['cnn'], \
+            batch['pose'] ,batch['depths'], batch['confs'].float(),self.iteration)
         
-        # depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
-        # colorize_depths = []
-        # for depth in depths:
-        #     depth =depth.detach()
-        #     depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
-        #     colorize_depths.append(depth)
-        # colorize_depths = torch.cat(colorize_depths, dim=1)
-        # save_image(colorize_depths.permute(2,0,1),  'ref_colorize_depths.png')
-        
-        # depth = ret['depth']
-        # depth = depth.detach()
-        # depth = colorize(depth.squeeze(0).squeeze(0), cmap_name='jet', append_cbar=True)
-        # imageio.imwrite( f'dgassin_color_depth_200.png',
-        #                 (depth.cpu().numpy() * 255.).astype(np.uint8))
         sfm_loss = 0
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
-        # pose_loss = self.pose_loss(ret['ex'], data_gt['ex'])
         loss_dict['gaussian_loss'] = coarse_loss
         loss_all += loss_dict['gaussian_loss']
         loss_all.backward()

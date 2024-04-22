@@ -150,10 +150,9 @@ class dustSplat(nn.Module):
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
-        visualization_dump = {}
         gaussians= self.encoder(
-            batch["context"], features,cnns,poses_rel,depths,
-        densities,global_step, False, scene_names=batch["scene"],visualization_dump = visualization_dump
+            batch["context"], features, cnns, poses_rel, depths,
+            densities,global_step, False, scene_names=batch["scene"], visualization_dump = None
         )
         output = self.decoder.forward(
             gaussians,
@@ -187,7 +186,7 @@ class dustSplat(nn.Module):
                 target_gt_ref = {'rgb': batch["context"]["image"]}    
             return ret, target_gt, ret_ref, target_gt_ref
         else:
-            return ret, target_gt, visualization_dump, _
+            return ret, target_gt, _, _
 
 
 

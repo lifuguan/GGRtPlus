@@ -92,7 +92,6 @@ class WaymoStaticDataset(Dataset):
             # self.image_size = (224, 320)
             # self.image_size = (512,336)
             self.image_size = (336,512)
-            # self.image_size = (176, 240)
         else:
             # self.image_size = (640,960)        
             self.image_size = (512,336)    

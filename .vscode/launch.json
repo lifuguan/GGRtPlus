@@ -60,7 +60,7 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "dust_demo",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/dust3r_eval.py",
             "console": "integratedTerminal",
@@ -83,13 +83,13 @@
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "dust_train",
-            "type": "debugpy",
+            "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/train_dust.py",
             "console": "integratedTerminal",
             "args": ["+weights=model_zoo/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth",
             "++rootdir=data/ibrnet/train",
-            "+ckpt_path=data/ibrnet/train/out/train_2_density_from_feature/model/model_002000.pth",
+            "+ckpt_path=data/ibrnet/train/out/train_2_density_from_feature/model/model_004000.pth",
             "++train_dataset=waymo",
             "++train_scenes=[019]",
             "++eval_dataset=waymo",
@@ -98,7 +98,7 @@
             "++use_pred_pose=False",
             "++render_video=False", 
             "++expname=debug" ]  
-        
+
         },
 
         {
