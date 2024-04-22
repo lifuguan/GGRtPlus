@@ -210,7 +210,6 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
             ),
             (h, w),
         )
-
         # Dump visualizations if needed.
         if visualization_dump is not None:
             visualization_dump["depth"] = rearrange(
@@ -225,6 +224,29 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
 
         # Optionally apply a per-pixel opacity.
         opacity_multiplier = 1
+
+        ###### split multi-view gaussians ######
+        gaussians_split = gaussians.split()
+        gaussian_rearrange_list = []
+        for single_view_gaussians in gaussians_split:
+                gaussian_rearrange_list.append(Gaussians(
+                        rearrange(
+                            single_view_gaussians.means,
+                            "b r srf spp xyz -> b (r srf spp) xyz",
+                        ),
+                        rearrange(
+                            single_view_gaussians.covariances,
+                            "b r srf spp i j -> b (r srf spp) i j",
+                        ),
+                        rearrange(
+                            single_view_gaussians.harmonics,
+                            "b r srf spp c d_sh -> b (r srf spp) c d_sh",
+                        ),
+                        rearrange(
+                            opacity_multiplier * single_view_gaussians.opacities,
+                            "b r srf spp -> b (r srf spp)",
+                        )))
+        visualization_dump['gaussians_split'] = gaussian_rearrange_list
 
         return Gaussians(
             rearrange(

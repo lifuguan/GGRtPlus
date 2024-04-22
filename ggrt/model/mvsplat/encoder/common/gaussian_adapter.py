@@ -19,6 +19,21 @@ class Gaussians:
     harmonics: Float[Tensor, "*batch 3 _"]
     opacities: Float[Tensor, " *batch"]
 
+    def split(self):
+        gaussian_split = []
+        means = self.means.unbind(dim=1)
+        covariances = self.covariances.unbind(dim=1)
+        scales = self.scales.unbind(dim=1)
+        rotations = self.rotations.unbind(dim=1)
+        harmonics = self.harmonics.unbind(dim=1)
+        opacities = self.opacities.unbind(dim=1)
+        for mean, covariance, scale, rotation, harmonic, opacity in zip(
+            means, covariances, scales, rotations, harmonics, opacities):
+            gaussian_split.append(
+                Gaussians(mean, covariance, scale, rotation, harmonic, opacity)
+            )
+        return gaussian_split
+        
 
 @dataclass
 class GaussianAdapterCfg:

@@ -10,6 +10,3 @@ class Gaussians:
     covariances: Float[Tensor, "batch gaussian dim dim"]
     harmonics: Float[Tensor, "batch gaussian 3 d_sh"]
     opacities: Float[Tensor, "batch gaussian"]
-
-    def split(self):
-        return self.means, self.covariances

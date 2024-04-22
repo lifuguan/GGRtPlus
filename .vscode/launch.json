@@ -30,7 +30,7 @@
         },
         {
             "env": {
-                "CUDA_VISIBLE_DEVICES": "2",
+                "CUDA_VISIBLE_DEVICES": "4",
                 "PYTHONPATH": "${workspaceFolder}"
             },
             "name": "test:pf_mvsplat_019",
@@ -47,7 +47,7 @@
                 "++eval_dataset=waymo",
                 "++eval_scenes=['019']",
                 "++num_source_views=4",
-                "++render_video=True",
+                "++render_video=False",
                 "++use_pred_pose=False",
                 "++expname=ft_mvsplat_019_depth_view_4_fix_bug"
             ]
@@ -291,7 +291,7 @@
             "justMyCode": false,
             "args": [
                 "--img-path",
-                "data/waymo/training/204/images",
+                "data/waymo/testing/019/images",
                 // "data/nerf_llff_data/fern/images",
                 "--save_npy"
             ]

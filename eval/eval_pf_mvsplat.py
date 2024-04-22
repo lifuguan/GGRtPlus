@@ -253,7 +253,7 @@ def eval(cfg_dict: DictConfig):
             
             batch = data_shim(data, device="cuda:0")
             batch = gaussian_model.data_shim(batch)       
-            output, gt_rgb, visualization_dump, gaussians = gaussian_model.inference(batch, i)
+            output, gt_rgb, visualization_dump, gaussians, single_view_outputs = gaussian_model.inference(batch, i)
             depth = depth_map(output['depth'][0][0])
             depth = depth.detach().cpu().permute(1, 2, 0)
 
@@ -275,7 +275,9 @@ def eval(cfg_dict: DictConfig):
             gt_rgb_np_uint8 = (255 * np.clip(gt_rgb.numpy(), a_min=0, a_max=1.)).astype(np.uint8)
             imageio.imwrite(os.path.join(out_scene_dir, '{}_gt_rgb.png'.format(file_id)), gt_rgb_np_uint8)
             
-            
+            single_view_rgbs = torch.cat([single_view_output.color[0][0].permute(1,2,0) for single_view_output in single_view_outputs], dim=1)
+            single_view_rgbs = (255 * np.clip(single_view_rgbs.detach().cpu().numpy(), a_min=0, a_max=1.)).astype(np.uint8)
+            imageio.imwrite(os.path.join(out_scene_dir, '{}_single_view_rgbs.png'.format(file_id)), single_view_rgbs)
                    
             if args.render_video is True:
                 sum_coarse_psnr += coarse_psnr

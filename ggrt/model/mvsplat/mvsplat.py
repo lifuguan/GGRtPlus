@@ -208,10 +208,24 @@ class MvSplat(nn.Module):
             (h, w),
             depth_mode='depth',
         )
-            
+        if 'gaussians_split' in visualization_dump.keys():
+            single_view_outputs = []
+            for single_view_gaussians in visualization_dump['gaussians_split']:
+                single_view_output = self.decoder.forward(
+                                single_view_gaussians,
+                                batch["target"]["extrinsics"],
+                                batch["target"]["intrinsics"],
+                                batch["target"]["near"],
+                                batch["target"]["far"],
+                                (h, w),
+                                depth_mode='depth',
+                            )
+                single_view_outputs.append(single_view_output)
+
+
         ret = {'rgb': output.color, 'depth': output.depth}
         if 'depth' in batch["target"].keys():
             target_gt = {'rgb': batch["target"]["image"], 'depth': batch["target"]["depth"]}
         else:
             target_gt = {'rgb': batch["target"]["image"]}
-        return ret, target_gt, visualization_dump, gaussians
+        return ret, target_gt, visualization_dump, gaussians, single_view_outputs
