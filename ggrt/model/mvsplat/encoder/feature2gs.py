@@ -72,6 +72,39 @@ class EncoderCostVolumeCfg:
     wo_cost_volume_refine: bool
     use_epipolar_trans: bool
 
+class Interpolate(nn.Module):
+    """Interpolation module."""
+
+    def __init__(self, scale_factor, mode, align_corners=False):
+        """Init.
+        Args:
+            scale_factor (float): scaling
+            mode (str): interpolation mode
+        """
+        super(Interpolate, self).__init__()
+
+        self.interp = nn.functional.interpolate
+        self.scale_factor = scale_factor
+        self.mode = mode
+        self.align_corners = align_corners
+
+    def forward(self, x):
+        """Forward pass.
+        Args:
+            x (tensor): input
+        Returns:
+            tensor: interpolated data
+        """
+
+        x = self.interp(
+            x,
+            scale_factor=self.scale_factor,
+            mode=self.mode,
+            align_corners=self.align_corners,
+        )
+
+        return x
+
 
 class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
     gaussian_adapter: GaussianAdapter
@@ -100,6 +133,16 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
             ),
             nn.GELU(),
         )
+        self.num_channels = 1
+        feature_dim = 256
+        last_dim = 32 
+        self.head = nn.Sequential(
+                nn.Conv2d(feature_dim, feature_dim // 2, kernel_size=3, stride=1, padding=1),
+                Interpolate(scale_factor=2, mode="bilinear", align_corners=True),
+                nn.Conv2d(feature_dim // 2, last_dim, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(True),
+                nn.Conv2d(last_dim, self.num_channels, kernel_size=1, stride=1, padding=0)
+            )
 
         self.gaussian_adapter = GaussianAdapter(cfg.gaussian_adapter)
         # self.to_gaussians = nn.Sequential(
@@ -187,6 +230,10 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
         xy_ray, _ = sample_image_grid((h, w), device)
         xy_ray = rearrange(xy_ray, "h w xy -> (h w) () xy")
         features = rearrange(features, "b v d_feature h w -> (b v) d_feature h w ")
+        densities = self.head(features)
+
+
+
         cnns = rearrange(cnns, "b v d_feature h w -> (b v) d_feature h w ")
         cnns = self.upsampler2(cnns)
         features = self.upsampler1(torch.cat((features,cnns),dim=1))     #卷积降dim维度  插值h w
@@ -197,7 +244,7 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
 
         # depths = rearrange(depths.unsqueeze(-1), "b v h w l -> (b v) l h w")
         context["image"] = rearrange(context["image"], "b v c h w -> (b v) c h w")
-        refine_out = self.refine_unet(torch.cat([context["image"],proj_feature,rearrange(depths.unsqueeze(-1), "b v h w l -> (b v) l h w"),rearrange(densities.unsqueeze(-1), "b v h w l -> (b v) l h w")],dim=1))
+        refine_out = self.refine_unet(torch.cat([context["image"],proj_feature,rearrange(depths.unsqueeze(-1), "b v h w l -> (b v) l h w"),densities],dim=1))
         raw_gaussians_in = [refine_out, context["image"],features]
         raw_gaussians_in = torch.cat(raw_gaussians_in,dim=1)
         raw_gaussians = self.to_gaussians(raw_gaussians_in)
@@ -222,7 +269,7 @@ class encoderdust2gs(Encoder[EncoderCostVolumeCfg]):
         pixel_size = 1 / torch.tensor((w, h), dtype=torch.float32, device=device)
         xy_ray = xy_ray + (offset_xy - 0.5) * pixel_size
         gpp = self.cfg.gaussians_per_pixel
-        densities = rearrange(densities.unsqueeze(-1).unsqueeze(-1), "b v h w k l -> b v (h w) k l")
+        densities = rearrange(densities.unsqueeze(-1), "(b v) l h w k  -> b v (h w) k l", b =b, v=v)
         gaussians = self.gaussian_adapter.forward(
             rearrange(poses_rel, "b v i j -> b v () () () i j"),
             rearrange(context["intrinsics"], "b v i j -> b v () () () i j"),

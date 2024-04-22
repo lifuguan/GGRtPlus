@@ -62,7 +62,7 @@ from dust3r.viz import add_scene_cam, CAM_COLORS, OPENGL, pts3d_to_trimesh, cat_
 import wandb 
 
 from ggrt.geometry.align_poses import align_ate_c2b_use_a2b
-
+from torchvision.utils import save_image
 
 class dust2gsTrainer(BaseTrainer):
     def __init__(self, config) -> None:
@@ -223,7 +223,22 @@ class dust2gsTrainer(BaseTrainer):
             pose_error = evaluate_camera_alignment(poses_rel, batch['context']["extrinsics"][0])
             R_errors = pose_error['R_error_mean']
             t_errors = pose_error['t_error_mean']    
-        ret, data_gt,_,_ = self.model.gaussian_model(batch,features,cnns,poses_2_rel,depths,cmap.float(),self.iteration)
+        ret, data_gt,visualization_dump,_ = self.model.gaussian_model(batch,features,cnns,poses_2_rel,depths,cmap.float(),self.iteration)
+        
+        # depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
+        # colorize_depths = []
+        # for depth in depths:
+        #     depth =depth.detach()
+        #     depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
+        #     colorize_depths.append(depth)
+        # colorize_depths = torch.cat(colorize_depths, dim=1)
+        # save_image(colorize_depths.permute(2,0,1),  'ref_colorize_depths.png')
+        
+        # depth = ret['depth']
+        # depth = depth.detach()
+        # depth = colorize(depth.squeeze(0).squeeze(0), cmap_name='jet', append_cbar=True)
+        # imageio.imwrite( f'dgassin_color_depth_200.png',
+        #                 (depth.cpu().numpy() * 255.).astype(np.uint8))
         sfm_loss = 0
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
