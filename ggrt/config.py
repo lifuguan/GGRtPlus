@@ -132,5 +132,6 @@ def config_parser():
      parser.add_argument("--tmp_dir", type=str, default=None, help="value for tempfile.tempdir")
      parser.add_argument("--silent", action='store_true', default=False,
                          help="silence logs")
-
+     parser.add_argument('--model', default="AsymmetricCroCo3DStereo(patch_embed_cls='ManyAR_PatchEmbed')",
+                        type=str, help="string containing the model to build")
      return parser

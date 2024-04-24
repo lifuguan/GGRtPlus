@@ -39,7 +39,7 @@ import torch
 import tqdm
 import numpy as np
 from dust3r.utils.image import resize_dust, rgb
-from dust3r.inference import inference, load_model
+# from dust3r.inference import inference, load_model
 from dust3r.image_pairs import make_pairs
 from ggrt.data_loaders import dataset_dict
 import os
@@ -83,13 +83,22 @@ class dust2gsTrainer(BaseTrainer):
                                                         1 / warm_up_steps,
                                                         1,
                                                         total_iters=warm_up_steps)
+        self.pose_optimizer = torch.optim.Adam([
+            dict(params=self.model.pose_learner.parameters(), lr=self.config.lrate_pose)
+        ])
+        self.pose_scheduler = torch.optim.lr_scheduler.StepLR(
+            self.pose_optimizer, step_size=self.config.lrate_decay_pose_steps, gamma=0.5)
 
     def setup_loss_functions(self):
         self.rgb_loss = MaskedL2ImageLoss()
 
     def compose_state_dicts(self) -> None:
         self.state_dicts = {'models': dict(), 'optimizers': dict(), 'schedulers': dict()}
+        self.state_dicts['models']['pose_learner'] = self.model.pose_learner
         self.state_dicts['models']['gaussian'] = self.model.gaussian_model
+        
+        self.state_dicts['optimizers']['pose_optimizer'] = self.pose_optimizer
+        self.state_dicts['schedulers']['pose_scheduler'] = self.pose_scheduler
     def pose_loss(self, pred_pose, gt_pose):
         pred_rt = pred_pose[:,:,:3,:3]
         _,v,_,_ = pred_pose.shape
@@ -134,19 +143,25 @@ class dust2gsTrainer(BaseTrainer):
 
     def train_iteration(self, batch) -> None:
         self.optimizer.zero_grad()
+        self.pose_optimizer.zero_grad()
         batch = data_shim(batch, device=self.device)
         batch = self.model.gaussian_model.data_shim(batch)
         device = self.config.device
         silent=self.config.silent
-        model = load_model(self.config.weights, self.config.device, verbose=not self.config.silent)
-
+        # model = load_model(self.config.weights, self.config.device, verbose=not self.config.silent)
+        state = 'nerf_only'
+        self.state = self.model.switch_state_machine(state='nerf_only')
         batch_size = 1
-        with torch.no_grad():
+        if True:
 
             # rgb_path = batch['rgb_path'][0]
-            imgs = resize_dust(batch["context"]["dust_img"],size=512)   #将image resize成512
-            pairs = make_pairs(imgs, scene_graph='complete', prefilter=None, symmetrize=True)
-            output,feat1,feat2,cnn1,cnn2 = inference(pairs, model, device, batch_size=batch_size, verbose=not silent)
+            # imgs = resize_dust(batch["context"]["dust_img"],size=512)   #将image resize成512
+            # pairs = make_pairs(imgs, scene_graph='complete', prefilter=None, symmetrize=True)
+            # output,feat1,feat2,cnn1,cnn2 = inference(pairs, model, device, batch_size=batch_size, verbose=not silent)
+
+
+            output,feat1,feat2,cnn1,cnn2,imgs = self.model.correct_poses(batch,device,batch_size,silent)
+
             mode = GlobalAlignerMode.PointCloudOptimizer if len(imgs) > 2 else GlobalAlignerMode.PairViewer
             scene = global_aligner(output, device=device, mode=mode, verbose=not silent)
             schedule = 'linear'
@@ -225,20 +240,20 @@ class dust2gsTrainer(BaseTrainer):
             t_errors = pose_error['t_error_mean']    
         ret, data_gt,visualization_dump,_ = self.model.gaussian_model(batch,features,cnns,poses_2_rel,depths,cmap.float(),self.iteration)
         
-        # depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
-        # colorize_depths = []
-        # for depth in depths:
-        #     depth =depth.detach()
-        #     depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
-        #     colorize_depths.append(depth)
-        # colorize_depths = torch.cat(colorize_depths, dim=1)
-        # save_image(colorize_depths.permute(2,0,1),  'ref_colorize_depths.png')
+        depths = visualization_dump['depth'].reshape(visualization_dump['depth'].shape[1:4])
+        colorize_depths = []
+        for depth in depths:
+            depth =depth.detach()
+            depth = colorize(depth.detach().cpu(), cmap_name='jet', append_cbar=True)
+            colorize_depths.append(depth)
+        colorize_depths = torch.cat(colorize_depths, dim=1)
+        save_image(colorize_depths.permute(2,0,1),  'ref_colorize_depths.png')
         
-        # depth = ret['depth']
-        # depth = depth.detach()
-        # depth = colorize(depth.squeeze(0).squeeze(0), cmap_name='jet', append_cbar=True)
-        # imageio.imwrite( f'dgassin_color_depth_200.png',
-        #                 (depth.cpu().numpy() * 255.).astype(np.uint8))
+        depth = ret['depth']
+        depth = depth.detach()
+        depth = colorize(depth.squeeze(0).squeeze(0), cmap_name='jet', append_cbar=True)
+        imageio.imwrite( f'dgassin_color_depth_200.png',
+                        (depth.cpu().numpy() * 255.).astype(np.uint8))
         sfm_loss = 0
         loss_all, loss_dict = 0, {}
         coarse_loss = self.rgb_loss(ret, data_gt)
@@ -246,8 +261,17 @@ class dust2gsTrainer(BaseTrainer):
         loss_dict['gaussian_loss'] = coarse_loss
         loss_all += loss_dict['gaussian_loss']
         loss_all.backward()
-        self.optimizer.step()
-        self.scheduler.step()
+        
+        if state == "nerf_only":
+            self.optimizer.step()
+            self.scheduler.step()
+        if state == "joint":
+            self.optimizer.step()
+            self.scheduler.step()
+            self.pose_optimizer.step()
+            self.pose_scheduler.step()
+            
+        
         if self.config.local_rank == 0 and self.iteration % self.config.n_tensorboard == 0:
             mse_error = img2mse(ret['rgb'], data_gt['rgb']).item()
             self.scalars_to_log['train/coarse-loss'] = mse_error

@@ -8,7 +8,7 @@ from copy import copy, deepcopy
 import torch
 import torch.nn as nn
 
-from dust3r.inference import get_pred_pts3d, find_opt_scaling
+# from dust3r.inference import get_pred_pts3d, find_opt_scaling
 from dust3r.utils.geometry import inv, geotrf, normalize_pointcloud
 from dust3r.utils.geometry import get_joint_pointcloud_depth, get_joint_pointcloud_center_scale
 

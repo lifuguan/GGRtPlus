@@ -6,17 +6,31 @@ import torch
 from ggrt.model.feature_network import ResUNet
 from ggrt.depth_pose_network import DepthPoseNet
 from ggrt.loss.photometric_loss import MultiViewPhotometricDecayLoss
-
+import tqdm
 from ggrt.base.model_base import Model
-
+from dust3r.utils.device import to_cpu, collate_with_cat
 from ggrt.model.mvsplat.decoder import get_decoder
 from ggrt.model.mvsplat.encoder import get_encoder
 from ggrt.model.mvsplat.dustsplat import dustSplat
-
+from dust3r.utils.image import resize_dust, rgb
+# from dust3r.inference import infer, load_model
+from dust3r.image_pairs import make_pairs
+from dust3r.model import AsymmetricCroCo3DStereo, inf 
+from dust3r.losses import *
 class dust_gs(Model):
     def __init__(self, args, load_opt=True, load_scheduler=True, pretrained=True):
         device = torch.device(f'cuda:{args.local_rank}')
         # create generalized 3d gaussian.
+
+        self.pose_learner = eval(args.model).to(device)
+        print(f'>> Creating train criterion = {args.train_criterion}')
+        # train_criterion = eval(args.train_criterion)
+        # print(f'>> Creating test criterion = {args.test_criterion or args.train_criterion}')
+        # test_criterion = eval(args.test_criterion or args.criterion).to(device)
+        self.pose_learner.to(device)
+        self.args = args
+
+
         encoder, encoder_visualizer = get_encoder(args.mvsplat.encoder)
         decoder = get_decoder(args.mvsplat.decoder)
         self.gaussian_model = dustSplat(encoder, decoder, encoder_visualizer)
@@ -39,15 +53,57 @@ class dust_gs(Model):
             )
 
     def switch_to_eval(self):
-        # self.pose_learner.eval()
+        self.pose_learner.eval()
         self.gaussian_model.eval()
 
     def switch_to_train(self):
-        # self.pose_learner.train()
+        self.pose_learner.train(True)
         self.gaussian_model.train()
             
-    def correct_poses(self, fmaps, target_image, ref_imgs, target_camera, ref_cameras,
-                      min_depth=0.1, max_depth=100, scaled_shape=(378, 504)):
+    def check_if_same_size(self ,pairs):
+        shapes1 = [img1['img'].shape[-2:] for img1, img2 in pairs]
+        shapes2 = [img2['img'].shape[-2:] for img1, img2 in pairs]
+        return all(shapes1[0] == s for s in shapes1) and all(shapes2[0] == s for s in shapes2)
+
+
+    def _interleave_imgs(self,img1, img2):
+        res = {}
+        for key, value1 in img1.items():
+            value2 = img2[key]
+            if isinstance(value1, torch.Tensor):
+                value = torch.stack((value1, value2), dim=1).flatten(0, 1)
+            else:
+                value = [x for pair in zip(value1, value2) for x in pair]
+            res[key] = value
+        return res
+
+    def make_batch_symmetric(self , batch):
+        view1, view2 = batch
+        view1, view2 = (self._interleave_imgs(view1, view2), self._interleave_imgs(view2, view1))
+        return view1, view2
+
+    def loss_of_one_batch(self,batch, model, criterion, device, symmetrize_batch=False, use_amp=False, ret=None):
+        view1, view2 = batch
+        for view in batch:
+            for name in 'img pts3d valid_mask camera_pose camera_intrinsics F_matrix corres'.split():  # pseudo_focal
+                if name not in view:
+                    continue
+                view[name] = view[name].to(device, non_blocking=True)
+
+        if symmetrize_batch:
+            view1, view2 = self.make_batch_symmetric(batch)
+
+        with torch.cuda.amp.autocast(enabled=bool(use_amp)):
+            pred1, pred2 ,feat1, feat2 , path_1 ,path_2= model(view1, view2)
+
+            # loss is supposed to be symmetric
+            with torch.cuda.amp.autocast(enabled=False):
+                # loss = criterion(view1, view2, pred1, pred2) if criterion is not None else None
+                loss=0
+        result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
+        return  result,feat1,feat2,path_1 ,path_2
+
+    def correct_poses(self, batch,device,batch_size,silent):
         """
         Args:
             fmaps: [n_views+1, c, h, w]
@@ -59,26 +115,54 @@ class dust_gs(Model):
             inv_depths: n_iters*[1, 1, h, w] if training else [1, 1, h, w]
             rel_poses: [n_views, n_iters, 6] if training else [n_views, 6]
         """
-        target_intrinsics = target_camera[:, 2:18].reshape(-1, 4, 4)[..., :3, :3] # [1, 3, 3]
-        ref_intrinsics = ref_cameras.squeeze(0)[:, 2:18].reshape(-1, 4, 4)[..., :3, :3] # [n_views, 3, 3]
-        target_image = target_image.permute(0, 3, 1, 2) # [1, 3, h, w]
-        ref_imgs = ref_imgs.squeeze(0).permute(0, 3, 1, 2) # [n_views, 3, h, w]
+        imgs = resize_dust(batch["context"]["dust_img"],size=512)   #将image resize成512
+        pairs = make_pairs(imgs, scene_graph='complete', prefilter=None, symmetrize=True)
 
-        inv_depths, rel_poses, fmap = self.pose_learner(
-            fmaps=None, # fmaps,
-            target_image=target_image,
-            ref_imgs=ref_imgs,
-            target_intrinsics=target_intrinsics,
-            ref_intrinsics=ref_intrinsics,
-            min_depth=min_depth, max_depth=max_depth,
-            scaled_shape=scaled_shape)
-        rel_poses = rel_poses.squeeze(0)
+        verbose=True
 
-        sfm_loss = 0
-        if self.pose_learner.training:
-            sfm_loss = self.photometric_loss(target_image, ref_imgs, inv_depths, target_intrinsics, ref_intrinsics, rel_poses)
 
-        return inv_depths, rel_poses, sfm_loss, fmap
+        # if verbose:
+        #     print(f'>> Inference with model on {len(pairs)} image pairs')
+        result = []
+
+    # first, check if all images have the same size
+        multiple_shapes = not (self.check_if_same_size(pairs))
+        if multiple_shapes:  # force bs=1
+            batch_size = 1
+    # batch_size = len(pairs)
+        batch_size = 1
+        feat1_list = []
+        feat2_list = []
+        cnn1_list = []
+        cnn2_list = []
+        for i in range(0, len(pairs), batch_size):
+            view1_ft_lst = []
+            view2_ft_lst = []
+            # start = time.time()
+            train_criterion = eval(self.args.train_criterion).to(device)
+            loss_tuple,cnn1 ,cnn2,path_1 ,path_2 =  self.loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), self.pose_learner, train_criterion, device,
+                                        symmetrize_batch=False,
+                                        use_amp=False, ret='loss')
+            # res ,cnn1 ,cnn2,path_1 ,path_2= loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
+            # end =time.time()
+            # print(end-start)
+            result.append(to_cpu(loss_tuple))
+            feat1 = path_1
+            feat2 = path_2
+            feat1_list.append(feat1)
+            feat2_list.append(feat2)
+            cnn1_list.append(cnn1)
+            cnn2_list.append(cnn2)
+        # pfeat01.append(dec2[0])
+        result = collate_with_cat(result, lists=multiple_shapes)
+
+        return result,feat1_list,feat2_list,cnn1_list,cnn2_list,imgs
+
+
+
+        # output,feat1,feat2,cnn1,cnn2 = infer(self.args,pairs, self.pose_learner, device, batch_size=batch_size, verbose=not silent)
+
+        return result,feat1,feat2,cnn1,cnn2,imgs
 
     def switch_state_machine(self, state='joint') -> str:
         if state == 'pose_only':

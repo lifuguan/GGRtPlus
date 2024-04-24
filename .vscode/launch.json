@@ -87,9 +87,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/train_dust.py",
             "console": "integratedTerminal",
-            "args": ["+weights=model_zoo/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth",
+            "args": [
+                // "+model=model_zoo/DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth",
             "++rootdir=data/ibrnet/train",
-            "+ckpt_path=data/ibrnet/train/out/train_2_density_from_feature/model/model_002000.pth",
+            "+ckpt_path=data/ibrnet/train/out/debug/model/model_000500.pth",
             "++train_dataset=waymo",
             "++train_scenes=[019]",
             "++eval_dataset=waymo",
@@ -100,7 +101,6 @@
             "++expname=debug" ]  
         
         },
-
         {
             "env": {
                 "CUDA_VISIBLE_DEVICES": "7",

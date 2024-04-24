@@ -47,11 +47,17 @@ optimizer:
 ### CONSOLE AND TENSORBOARD
 n_validation : 2000
 n_tensorboard : 2
-n_checkpoint : 500
+n_checkpoint : 1000
 visdom_port : 9000
 
 ### evaluation options
 llffhold : 8
+model : "AsymmetricCroCo3DStereo(pos_embed='RoPE100', patch_embed_cls='ManyAR_PatchEmbed', img_size=(512, 512), head_type='dpt', output_mode='pts3d', depth_mode=('exp', -inf, inf), conf_mode=('exp', 1, inf), enc_embed_dim=1024, enc_depth=24, enc_num_heads=16, dec_embed_dim=768, dec_depth=12, dec_num_heads=12)" 
+
+train_criterion: "ConfLoss(Regr3D(L21, norm_mode='avg_dis'), alpha=0.2)"
+test_criterion: "Regr3D_ScaleShiftInv(L21, gt_scale=True)"
+
+
 
 
 N_rand : 500

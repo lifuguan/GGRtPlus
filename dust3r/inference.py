@@ -11,7 +11,7 @@ from dust3r.model import AsymmetricCroCo3DStereo, inf  # noqa: F401, needed when
 from dust3r.utils.misc import invalid_to_nans
 from dust3r.utils.geometry import depthmap_to_pts3d, geotrf
 import time
-
+from dust3r.losses import * 
 def load_model(model_path, device, verbose=True):
     if verbose:
         print('... loading model from', model_path)
@@ -24,10 +24,10 @@ def load_model(model_path, device, verbose=True):
     assert "landscape_only=False" in args
     if verbose:
         print(f"instantiating : {args}")
-    net = eval(args)
-    s = net.load_state_dict(ckpt['model'], strict=False)
-    if verbose:
-        print(s)
+    net = eval(args.model)
+    # s = net.load_state_dict(ckpt['model'], strict=False)
+    # if verbose:
+    #     print(s)
     return net.to(device)
 
 
@@ -68,11 +68,11 @@ def loss_of_one_batch(batch, model, criterion, device, symmetrize_batch=False, u
             loss = criterion(view1, view2, pred1, pred2) if criterion is not None else None
 
     result = dict(view1=view1, view2=view2, pred1=pred1, pred2=pred2, loss=loss)
-    return result[ret] if ret else result,feat1,feat2,path_1 ,path_2
+    return result,feat1,feat2,path_1 ,path_2 if ret else result,feat1,feat2,path_1 ,path_2
 
 
 @torch.no_grad()
-def inference(pairs, model, device, batch_size=8, verbose=True):
+def inf(args, pairs, model, device, batch_size=8, verbose=True):
     if verbose:
         print(f'>> Inference with model on {len(pairs)} image pairs')
     result = []
@@ -90,10 +90,14 @@ def inference(pairs, model, device, batch_size=8, verbose=True):
         view1_ft_lst = []
         view2_ft_lst = []
         # start = time.time()
-        res ,cnn1 ,cnn2,path_1 ,path_2= loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
+        train_criterion = eval(args.train_criterion).to(device)
+        loss_tuple,cnn1 ,cnn2,path_1 ,path_2 =  loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, train_criterion, device,
+                                       symmetrize_batch=True,
+                                       use_amp=False, ret='loss')
+        # res ,cnn1 ,cnn2,path_1 ,path_2= loss_of_one_batch(collate_with_cat(pairs[i:i+batch_size]), model, None, device)
         # end =time.time()
         # print(end-start)
-        result.append(to_cpu(res))
+        result.append(to_cpu(loss_tuple))
         feat1 = path_1
         feat2 = path_2
         feat1_list.append(feat1)
